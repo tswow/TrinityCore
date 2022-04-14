@@ -2236,6 +2236,8 @@ MeleeHitOutcome Unit::RollMeleeOutcomeAgainst(Unit const* victim, WeaponAttackTy
     float dodge_chance_f = GetUnitDodgeChance(attType, victim);
     float block_chance_f = GetUnitBlockChance(attType, victim);
     float parry_chance_f = GetUnitParryChance(attType, victim);
+    float glancing_chance_f = (float)(std::min(600 + (victimDefenseSkill - ((attackerWeaponSkill > attackerMaxSkillValueForLevel) ? attackerMaxSkillValueForLevel : attackerWeaponSkill)) * 120, 4000)) / 100.0f;
+    float crushing_chance_f = (float)(std::max((attackerMaxSkillValueForLevel - (std::min(victimDefenseSkill, victimMaxSkillValueForLevel))), 20) * 200 - 1500) / 100.0f;
 
     FIRE(UnitOnCalcMeleeOutcome
         , TSUnit(const_cast<Unit*>(this))
@@ -2245,14 +2247,18 @@ MeleeHitOutcome Unit::RollMeleeOutcomeAgainst(Unit const* victim, WeaponAttackTy
         , TSMutable<float>(&dodge_chance_f)
         , TSMutable<float>(&block_chance_f)
         , TSMutable<float>(&parry_chance_f)
+        , TSMutable<float>(&glancing_chance_f)
+        , TSMutable<float>(&crushing_chance_f)
         , attType
-        );
+    );
 
-    int32 miss_chance = int32(miss_chance_f*100.0f);
-    int32 crit_chance = int32(crit_chance_f*100.0f);
-    int32 dodge_chance = int32(dodge_chance_f*100.0f);
-    int32 block_chance = int32(block_chance_f*100.0f);
-    int32 parry_chance = int32(parry_chance_f*100.0f);
+    int32 miss_chance = int32(miss_chance_f * 100.0f);
+    int32 crit_chance = int32(crit_chance_f * 100.0f);
+    int32 dodge_chance = int32(dodge_chance_f * 100.0f);
+    int32 block_chance = int32(block_chance_f * 100.0f);
+    int32 parry_chance = int32(parry_chance_f * 100.0f);
+    int32 glancing_chance = int32(glancing_chance_f * 100.0f);
+    int32 crushing_chance = int32(crushing_chance_f * 100.0f);
     // @tswow-end
 
     // melee attack table implementation
@@ -2310,14 +2316,10 @@ MeleeHitOutcome Unit::RollMeleeOutcomeAgainst(Unit const* victim, WeaponAttackTy
         GetLevel() <= victim->GetLevelForTarget(this))
     {
         // cap possible value (with bonuses > max skill)
-        int32 skill = attackerWeaponSkill;
-        int32 maxskill = attackerMaxSkillValueForLevel;
-        skill = (skill > maxskill) ? maxskill : skill;
 
         // against boss-level targets - 24% chance of 25% average damage reduction (damage reduction range : 20-30%)
         // against level 82 elites - 18% chance of 15% average damage reduction (damage reduction range : 10-20%)
-        tmp = 600 + (victimDefenseSkill - skill) * 120;
-        tmp = std::min(tmp, 4000);
+        tmp = glancing_chance;
         if (tmp > 0 && roll < (sum += tmp))
             return MELEE_HIT_GLANCING;
     }
@@ -2343,17 +2345,7 @@ MeleeHitOutcome Unit::RollMeleeOutcomeAgainst(Unit const* victim, WeaponAttackTy
         !IsControlledByPlayer() &&
         !(GetTypeId() == TYPEID_UNIT && ToCreature()->GetCreatureTemplate()->flags_extra & CREATURE_FLAG_EXTRA_NO_CRUSHING_BLOWS))
     {
-        // when their weapon skill is 15 or more above victim's defense skill
-        tmp = victimDefenseSkill;
-        // having defense above your maximum (from items, talents etc.) has no effect
-        tmp = std::min(tmp, victimMaxSkillValueForLevel);
-        // tmp = mob's level * 5 - player's current defense skill
-        tmp = attackerMaxSkillValueForLevel - tmp;
-        // minimum of 20 points diff (4 levels difference)
-        tmp = std::max(tmp, 20);
-
-        // add 2% chance per lacking skill point
-        tmp = tmp * 200 - 1500;
+        tmp = crushing_chance;
         if (tmp > 0 && roll < (sum += tmp))
             return MELEE_HIT_CRUSHING;
     }
