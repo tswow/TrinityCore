@@ -2235,6 +2235,8 @@ MeleeHitOutcome Unit::RollMeleeOutcomeAgainst(Unit const* victim, WeaponAttackTy
     float dodge_chance_f = GetUnitDodgeChance(attType, victim);
     float block_chance_f = GetUnitBlockChance(attType, victim);
     float parry_chance_f = GetUnitParryChance(attType, victim);
+    float glancing_chance_f = 0;
+    float crushing_chance_f = 0;
 
     FIRE(Unit,OnCalcMeleeOutcome
         , TSUnit(const_cast<Unit*>(this))
@@ -2244,6 +2246,8 @@ MeleeHitOutcome Unit::RollMeleeOutcomeAgainst(Unit const* victim, WeaponAttackTy
         , TSMutable<float>(&dodge_chance_f)
         , TSMutable<float>(&block_chance_f)
         , TSMutable<float>(&parry_chance_f)
+        , TSMutable<float>(&glancing_chance_f)
+        , TSMutable<float>(&crushing_chance_f)
         , attType
         );
 
@@ -2252,6 +2256,8 @@ MeleeHitOutcome Unit::RollMeleeOutcomeAgainst(Unit const* victim, WeaponAttackTy
     int32 dodge_chance = int32(dodge_chance_f*100.0f);
     int32 block_chance = int32(block_chance_f*100.0f);
     int32 parry_chance = int32(parry_chance_f*100.0f);
+    int32 glancing_chance = int32(glancing_chance_f*100.0f);
+    int32 crushing_chance = int32(crushing_chance_f*100.0f);
     // @tswow-end
 
     // melee attack table implementation
@@ -2303,6 +2309,14 @@ MeleeHitOutcome Unit::RollMeleeOutcomeAgainst(Unit const* victim, WeaponAttackTy
     }
 
     // 4. GLANCING
+    // @tswow-begin
+    if (glancing_chance)
+    {
+        tmp = glancing_chance;
+        if (tmp > 0 && roll < (sum += tmp))
+            return MELEE_HIT_GLANCING;
+    }
+    // @tswow-end
     // Max 40% chance to score a glancing blow against mobs of the same or higher level (only players and pets, not for ranged weapons).
     if ((GetTypeId() == TYPEID_PLAYER || IsPet()) &&
         victim->GetTypeId() != TYPEID_PLAYER && !victim->IsPet() &&
@@ -2336,6 +2350,14 @@ MeleeHitOutcome Unit::RollMeleeOutcomeAgainst(Unit const* victim, WeaponAttackTy
         return MELEE_HIT_CRIT;
 
     // 7. CRUSHING
+    // @tswow-begin
+    if (crushing_chance)
+    {
+        tmp = crushing_chance;
+        if (tmp > 0 && roll < (sum += tmp))
+            return MELEE_HIT_CRUSHING;
+    }
+    // @tswow-end
     // mobs can score crushing blows if they're 4 or more levels above victim
     if (GetLevelForTarget(victim) >= victim->GetLevelForTarget(this) + 4 &&
         // can be from by creature (if can) or from controlled player that considered as creature
