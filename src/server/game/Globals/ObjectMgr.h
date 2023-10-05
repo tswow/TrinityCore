@@ -1016,6 +1016,9 @@ class TC_GAME_API ObjectMgr
         GameObjectTemplateContainer const& GetGameObjectTemplates() const { return _gameObjectTemplateStore; }
         uint32 LoadReferenceVendor(int32 vendor, int32 item_id, std::set<uint32>* skip_vendors);
 
+        // @tswow-begin
+        void CheckGameObjectTemplate(uint32 entry, GameObjectTemplate& got);
+        // @tswow-end
         void LoadGameObjectTemplate();
         void LoadGameObjectTemplateAddons();
         void LoadGameObjectOverrides();
@@ -1235,6 +1238,9 @@ class TC_GAME_API ObjectMgr
         void LoadCreatureQuestItems();
         void LoadTempSummons();
         void LoadCreatures();
+        // @tswow-begin
+        bool CheckCreature(CreatureTemplate const* cinfo, std::map<uint32,uint32> & spawnmasks, CreatureData& data, ObjectGuid::LowType guid);
+        // @tswow-end
         void LoadLinkedRespawn();
         bool SetCreatureLinkedRespawn(ObjectGuid::LowType guid, ObjectGuid::LowType linkedGuid);
         void LoadCreatureAddons();
@@ -1245,11 +1251,15 @@ class TC_GAME_API ObjectMgr
         void LoadCreatureMovementOverrides();
         void LoadGameObjectLocales();
         void LoadGameObjects();
+        // @tswow-begin
+        bool CheckGameObject(std::map<uint32,uint32> const& spawnmasks, GameObjectData& data, ObjectGuid::LowType guid);
+        // @tswow-end
         void LoadSpawnGroupTemplates();
         void LoadSpawnGroups();
         void LoadInstanceSpawnGroups();
         void LoadItemTemplates();
         // @tswow-begin
+        void CheckItemTemplate(uint32 entry, bool enforceDBCAttributes, ItemTemplate &itemTemplate);
         void LoadCustomItemTemplates();
         ItemTemplate* GetItemTemplateMutable(uint32 entry);
         ItemTemplate* CreateItemTemplate(uint32 entry, uint32 copyID);
