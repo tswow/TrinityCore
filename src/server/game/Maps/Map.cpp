@@ -593,9 +593,9 @@ bool Map::AddPlayerToPartition(Player* player)
         ConvertCorpseToBones(player->GetGUID());
 
     // @tswow-begin
-    //FIRE_ID(GetId(),Map,OnPlayerEnter,TSMap(this),TSPlayer(player));
+    FIRE_ID(GetId(),Map,OnPlayerEnter,TSMap(this),TSPlayer(player));
     // @tswow-end
-    //sScriptMgr->OnPlayerEnterMap(this, player);
+    sScriptMgr->OnPlayerEnterMap(this, player);
     return true;
 }
 
@@ -1192,22 +1192,22 @@ void Map::RemovePlayerFromPartition(Player* player)
     // Before leaving partition, update zone/area for stats
     player->UpdateZone(MAP_INVALID_ZONE, 0);
     // @tswow-begin
-    //FIRE_ID(GetId(),Map,OnPlayerLeave,TSMap(this),TSPlayer(player));
-    //player->m_tsWorldEntity.m_timers.remove_on_map_change();
+    FIRE_ID(GetId(),Map,OnPlayerLeave,TSMap(this),TSPlayer(player));
+    player->m_tsWorldEntity.m_timers.remove_on_map_change();
     // @tswow-end
-    //sScriptMgr->OnPlayerLeaveMap(this, player);
+    sScriptMgr->OnPlayerLeaveMap(this, player);
 
     player->CombatStop();
 
-    //bool const inWorld = player->IsInWorld();
+    bool const inWorld = player->IsInWorld();
     player->RemoveFromPartition();
     SendRemoveTransports(player);
 
     _updateMapPartitionPlayers.erase(player);
 
     // note: RemoveFromWorld does this for inWorld objects
-    //if (!inWorld) // if was in world, RemoveFromWorld() called DestroyForNearbyPlayers()
-    //    player->DestroyForNearbyPlayers(); // previous player->UpdateObjectVisibility(true)
+    if (!inWorld) // if was in world, RemoveFromWorld() called DestroyForNearbyPlayers()
+        player->DestroyForNearbyPlayers(); // previous player->UpdateObjectVisibility(true)
 
     if (player->IsInGrid())
         player->RemoveFromGrid();
