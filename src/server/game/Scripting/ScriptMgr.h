@@ -221,13 +221,11 @@ class TC_GAME_API ServerScript : public ScriptObject
         // being open; it is not.
         virtual void OnSocketClose(std::shared_ptr<WorldSocket> socket);
 
-        // Called when a packet is sent to a client. The packet object is a copy of the original packet, so reading
-        // and modifying it is safe.
-        virtual void OnPacketSend(WorldSession* session, WorldPacket& packet);
+        // Called when a packet is sent to a client.
+        virtual void OnPacketSend(WorldSession* session, WorldPacket const& packet);
 
-        // Called when a (valid) packet is received by a client. The packet object is a copy of the original packet, so
-        // reading and modifying it is safe. Make sure to check WorldSession pointer before usage, it might be null in case of auth packets
-        virtual void OnPacketReceive(WorldSession* session, WorldPacket& packet);
+        // Called when a (valid) packet is received by a client.
+        virtual void OnPacketReceive(WorldSession* session, WorldPacket const& packet);
 };
 
 class TC_GAME_API WorldScript : public ScriptObject
