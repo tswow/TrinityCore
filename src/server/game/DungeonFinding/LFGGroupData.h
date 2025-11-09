@@ -49,6 +49,7 @@ class TC_GAME_API LfgGroupData
 
         // Dungeon
         void SetDungeon(uint32 dungeon);
+        void SetDungeonCompletionTime(uint32 time);
 
         // VoteKick
         void DecreaseKicksLeft();
@@ -62,6 +63,7 @@ class TC_GAME_API LfgGroupData
 
         // Dungeon
         uint32 GetDungeon(bool asId = true) const;
+        uint32 GetDungeonCompletionTime() const;
 
         // VoteKick
         uint8 GetKicksLeft() const;
@@ -77,6 +79,7 @@ class TC_GAME_API LfgGroupData
         GuidSet m_Players;                                 ///< Players in group
         // Dungeon
         uint32 m_Dungeon;                                  ///< Dungeon entry
+        uint32 m_DungeonCompletionTime;                    ///< Timestamp when dungeon was finished
         // Vote Kick
         uint8 m_KicksLeft;                                 ///< Number of kicks left
         bool m_VoteKickActive;

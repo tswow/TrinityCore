@@ -36,6 +36,7 @@
 #include "TradeData.h"
 #include "World.h"
 #include "WorldPacket.h"
+#include "Group.h"
 
 void WorldSession::SendTradeStatus(TradeStatusInfo const& info)
 {
@@ -704,13 +705,32 @@ void WorldSession::HandleInitiateTradeOpcode(WorldPacket& recvPacket)
         return;
     }
 
-    if (pOther->GetTeam() != _player->GetTeam() &&
-        (!sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_TRADE) &&
-         !GetPlayer()->GetSession()->HasPermission(rbac::RBAC_PERM_ALLOW_TWO_SIDE_TRADE)))
+    if (pOther->GetTeam() != _player->GetTeam())
     {
-        info.Status = TRADE_STATUS_WRONG_FACTION;
-        SendTradeStatus(info);
-        return;
+        bool allowTrade = false;
+
+        // Allow trade if general cross-faction trade is enabled or player has permission
+        if (sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_TRADE) ||
+            GetPlayer()->GetSession()->HasPermission(rbac::RBAC_PERM_ALLOW_TWO_SIDE_TRADE))
+        {
+            allowTrade = true;
+        }
+        // Allow trade if both players are in the same cross-faction LFG group
+        else if (Group* group = _player->GetGroup())
+        {
+            if (group->IsCrossFactionLFG() &&
+                group == pOther->GetGroup())
+            {
+                allowTrade = true;
+            }
+        }
+
+        if (!allowTrade)
+        {
+            info.Status = TRADE_STATUS_WRONG_FACTION;
+            SendTradeStatus(info);
+            return;
+        }
     }
 
     if (!pOther->IsWithinDistInMap(_player, TRADE_DISTANCE, false))

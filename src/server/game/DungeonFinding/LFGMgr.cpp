@@ -980,6 +980,32 @@ void LFGMgr::MakeNewGroup(LfgProposal const& proposal)
         {
             grp = new Group();
             grp->ConvertToLFG();
+
+            // Check if this is a cross-faction group
+            if (sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_DUNGEON_FINDER))
+            {
+                bool hasCrossFaction = false;
+                uint8 firstTeam = 255;
+
+                for (auto itr : proposal.players)
+                {
+                    uint8 playerOriginalTeam = GetPlayerOriginalTeam(itr.first);
+                    if (firstTeam == 255)
+                        firstTeam = playerOriginalTeam;
+                    else if (firstTeam != playerOriginalTeam)
+                    {
+                        hasCrossFaction = true;
+                        break;
+                    }
+                }
+
+                if (hasCrossFaction)
+                {
+                    grp->SetCrossFactionLFG(true);
+                    TC_LOG_INFO("lfg", "Created cross-faction LFG group");
+                }
+            }
+
             grp->Create(player);
             ObjectGuid gguid = grp->GetGUID();
             SetState(gguid, LFG_STATE_PROPOSAL);
@@ -1445,6 +1471,10 @@ void LFGMgr::FinishDungeon(ObjectGuid gguid, const uint32 dungeonId, Map const* 
 
     SetState(gguid, LFG_STATE_FINISHED_DUNGEON);
 
+    // Record completion time for grace period
+    GroupsStore[gguid].SetDungeonCompletionTime(getMSTime());
+    TC_LOG_DEBUG("lfg", "Group {} finished dungeon at {}", gguid.ToString(), getMSTime());
+
     GuidSet const& players = GetPlayers(gguid);
     for (GuidSet::const_iterator it = players.begin(); it != players.end(); ++it)
     {
@@ -1900,10 +1930,19 @@ void LFGMgr::SetLeader(ObjectGuid gguid, ObjectGuid leader)
 
 void LFGMgr::SetTeam(ObjectGuid guid, uint8 team)
 {
-    if (sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_GROUP))
+    // Store the original team for later reference
+    uint8 originalTeam = team;
+
+    // If either cross-faction setting is enabled, use unified queue
+    if (sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_GROUP) ||
+        sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_DUNGEON_FINDER))
         team = 0;
 
     PlayersStore[guid].SetTeam(team);
+
+    // Store original faction for cross-faction dungeon finder
+    if (sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_DUNGEON_FINDER))
+        PlayersStore[guid].SetOriginalTeam(originalTeam);
 }
 
 ObjectGuid LFGMgr::GetGroup(ObjectGuid guid)
@@ -1994,15 +2033,26 @@ bool LFGMgr::IsLfgGroup(ObjectGuid guid)
 LFGQueue& LFGMgr::GetQueue(ObjectGuid guid)
 {
     uint8 queueId = 0;
-    if (guid.IsGroup())
+
+    // If cross-faction dungeon finder is enabled, use unified queue
+    if (sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_DUNGEON_FINDER))
     {
-        GuidSet const& players = GetPlayers(guid);
-        ObjectGuid pguid = players.empty() ? ObjectGuid::Empty : (*players.begin());
-        if (pguid)
-            queueId = GetTeam(pguid);
+        queueId = 0;  // Everyone goes to queue 0
     }
     else
-        queueId = GetTeam(guid);
+    {
+        // Original faction-based queue selection
+        if (guid.IsGroup())
+        {
+            GuidSet const& players = GetPlayers(guid);
+            ObjectGuid pguid = players.empty() ? ObjectGuid::Empty : (*players.begin());
+            if (pguid)
+                queueId = GetTeam(pguid);
+        }
+        else
+            queueId = GetTeam(guid);
+    }
+
     return QueuesStore[queueId];
 }
 
@@ -2143,6 +2193,22 @@ LfgDungeonSet LFGMgr::GetRandomAndSeasonalDungeons(uint8 level, uint8 expansion)
             randomDungeons.insert(dungeon.Entry());
     }
     return randomDungeons;
+}
+
+uint8 LFGMgr::GetPlayerOriginalTeam(ObjectGuid guid)
+{
+    LfgPlayerDataContainer::const_iterator itr = PlayersStore.find(guid);
+    if (itr != PlayersStore.end())
+        return itr->second.GetOriginalTeam();
+    return 0;
+}
+
+uint32 LFGMgr::GetDungeonCompletionTime(ObjectGuid gguid) const
+{
+    LfgGroupDataContainer::const_iterator itr = GroupsStore.find(gguid);
+    if (itr != GroupsStore.end())
+        return itr->second.GetDungeonCompletionTime();
+    return 0;
 }
 
 } // namespace lfg

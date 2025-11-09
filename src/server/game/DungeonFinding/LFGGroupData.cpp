@@ -22,7 +22,7 @@ namespace lfg
 {
 
 LfgGroupData::LfgGroupData(): m_State(LFG_STATE_NONE), m_OldState(LFG_STATE_NONE),
-    m_Leader(), m_Dungeon(0), m_KicksLeft(LFG_GROUP_MAX_KICKS), m_VoteKickActive(false)
+    m_Leader(), m_Dungeon(0), m_DungeonCompletionTime(0), m_KicksLeft(LFG_GROUP_MAX_KICKS), m_VoteKickActive(false)
 { }
 
 LfgGroupData::~LfgGroupData()
@@ -83,6 +83,11 @@ void LfgGroupData::SetDungeon(uint32 dungeon)
     m_Dungeon = dungeon;
 }
 
+void LfgGroupData::SetDungeonCompletionTime(uint32 time)
+{
+    m_DungeonCompletionTime = time;
+}
+
 void LfgGroupData::DecreaseKicksLeft()
 {
     if (m_KicksLeft)
@@ -120,6 +125,11 @@ uint32 LfgGroupData::GetDungeon(bool asId /* = true */) const
         return (m_Dungeon & 0x00FFFFFF);
     else
         return m_Dungeon;
+}
+
+uint32 LfgGroupData::GetDungeonCompletionTime() const
+{
+    return m_DungeonCompletionTime;
 }
 
 uint8 LfgGroupData::GetKicksLeft() const

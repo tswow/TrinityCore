@@ -215,6 +215,8 @@ class TC_GAME_API Group
         bool isBGGroup()   const;
         bool isBFGroup()   const;
         bool IsCreated()   const;
+        bool IsCrossFactionLFG() const;
+        void SetCrossFactionLFG(bool crossFaction);
         ObjectGuid GetLeaderGUID() const;
         ObjectGuid GetGUID() const;
         ObjectGuid::LowType GetLowGUID() const;
@@ -376,6 +378,7 @@ class TC_GAME_API Group
         uint32              m_dbStoreId;                    // Represents the ID used in database (Can be reused by other groups if group was disbanded)
         bool                m_isLeaderOffline;
         TimeTracker         m_leaderOfflineTimer;
+        bool                m_isCrossFactionLFG;            // Flag for cross-faction LFG groups
 
         struct NoopGroupDeleter { void operator()(Group*) const { /*noop - not managed*/ } };
         Trinity::unique_trackable_ptr<Group> m_scriptRef;

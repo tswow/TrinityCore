@@ -21,7 +21,7 @@ namespace lfg
 {
 
 LfgPlayerData::LfgPlayerData(): m_State(LFG_STATE_NONE), m_OldState(LFG_STATE_NONE),
-    m_Team(0), m_Group(), m_Roles(0), m_Comment(""), m_NumberOfPartyMembersAtJoin(0)
+    m_Team(0), m_OriginalTeam(0), m_Group(), m_Roles(0), m_Comment(""), m_NumberOfPartyMembersAtJoin(0)
 { }
 
 LfgPlayerData::~LfgPlayerData() { }
@@ -59,6 +59,11 @@ void LfgPlayerData::SetTeam(uint8 team)
     m_Team = team;
 }
 
+void LfgPlayerData::SetOriginalTeam(uint8 team)
+{
+    m_OriginalTeam = team;
+}
+
 void LfgPlayerData::SetGroup(ObjectGuid group)
 {
     m_Group = group;
@@ -92,6 +97,11 @@ LfgState LfgPlayerData::GetOldState() const
 uint8 LfgPlayerData::GetTeam() const
 {
     return m_Team;
+}
+
+uint8 LfgPlayerData::GetOriginalTeam() const
+{
+    return m_OriginalTeam;
 }
 
 ObjectGuid LfgPlayerData::GetGroup() const

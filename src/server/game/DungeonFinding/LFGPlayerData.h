@@ -36,6 +36,7 @@ class TC_GAME_API LfgPlayerData
         void SetState(LfgState state);
         void RestoreState();
         void SetTeam(uint8 team);
+        void SetOriginalTeam(uint8 team);
         void SetGroup(ObjectGuid group);
 
         // Queue
@@ -47,6 +48,7 @@ class TC_GAME_API LfgPlayerData
         LfgState GetState() const;
         LfgState GetOldState() const;
         uint8 GetTeam() const;
+        uint8 GetOriginalTeam() const;
         ObjectGuid GetGroup() const;
 
         // Queue
@@ -64,6 +66,7 @@ class TC_GAME_API LfgPlayerData
         LfgState m_OldState;                               ///< Old State - Used to restore state after failed Rolecheck/Proposal
         // Player
         uint8 m_Team;                                      ///< Player team - determines the queue to join
+        uint8 m_OriginalTeam;                              ///< Player's actual faction (for cross-faction tracking)
         ObjectGuid m_Group;                                ///< Original group of player when joined LFG
 
         // Queue

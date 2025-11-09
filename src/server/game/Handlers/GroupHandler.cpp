@@ -97,10 +97,26 @@ void WorldSession::HandleGroupInviteOpcode(WorldPackets::Party::PartyInviteClien
     }
 
     // can't group with
-    if (!invitingPlayer->IsGameMaster() && !sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_GROUP) && invitingPlayer->GetTeam() != invitedPlayer->GetTeam())
+    if (!invitingPlayer->IsGameMaster() && invitingPlayer->GetTeam() != invitedPlayer->GetTeam())
     {
-        SendPartyResult(PARTY_OP_INVITE, packet.TargetName, ERR_PLAYER_WRONG_FACTION);
-        return;
+        // Allow cross-faction if general cross-faction is enabled OR if dungeon finder cross-faction is enabled
+        // But dungeon finder cross-faction only allows groups formed through LFG, not manual invites
+        if (!sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_GROUP))
+        {
+            // If only dungeon finder cross-faction is enabled, block manual invites
+            if (sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_DUNGEON_FINDER))
+            {
+                SendPartyResult(PARTY_OP_INVITE, packet.TargetName, ERR_PLAYER_WRONG_FACTION);
+                return;
+            }
+            // Neither is enabled, block cross-faction invites
+            else
+            {
+                SendPartyResult(PARTY_OP_INVITE, packet.TargetName, ERR_PLAYER_WRONG_FACTION);
+                return;
+            }
+        }
+        // CONFIG_ALLOW_TWO_SIDE_INTERACTION_GROUP is enabled, allow the invite
     }
     if (invitingPlayer->GetInstanceId() != 0 && invitedPlayer->GetInstanceId() != 0 && invitingPlayer->GetInstanceId() != invitedPlayer->GetInstanceId() && invitingPlayer->GetMapId() == invitedPlayer->GetMapId())
     {

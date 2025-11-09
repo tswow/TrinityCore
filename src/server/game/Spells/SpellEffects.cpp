@@ -1618,6 +1618,39 @@ void Spell::DoCreateItem(uint32 itemId)
         // send info to the client
         player->SendNewItem(pItem, num_to_add, true, bgType == 0);
 
+        // @tswow-begin
+        // Get skill information from spell for crafting event
+        uint32 skillId = 0;
+        uint32 difficulty = 0; // 0 = grey, 1 = green, 2 = yellow, 3 = orange
+
+        SkillLineAbilityMapBounds bounds = sSpellMgr->GetSkillLineAbilityMapBounds(m_spellInfo->Id);
+        for (SkillLineAbilityMap::const_iterator _spell_idx = bounds.first; _spell_idx != bounds.second; ++_spell_idx)
+        {
+            if (_spell_idx->second->SkillLine)
+            {
+                skillId = _spell_idx->second->SkillLine;
+                uint32 skillValue = player->GetPureSkillValue(skillId);
+                uint32 greyLevel = _spell_idx->second->TrivialSkillLineRankHigh;
+                uint32 orangeLevel = _spell_idx->second->TrivialSkillLineRankLow;
+                uint32 yellowLevel = (greyLevel + orangeLevel) / 2;
+
+                // Determine difficulty color
+                if (skillValue < orangeLevel)
+                    difficulty = 3; // Orange
+                else if (skillValue < yellowLevel)
+                    difficulty = 2; // Yellow
+                else if (skillValue < greyLevel)
+                    difficulty = 1; // Green
+                else
+                    difficulty = 0; // Grey
+                break;
+            }
+        }
+
+        // Fire crafting event
+        FIRE(Player, OnCraftItem, TSPlayer(player), TSItem(pItem), TSSpellInfo(m_spellInfo), skillId, difficulty);
+        // @tswow-end
+
         // we succeeded in creating at least one item, so a levelup is possible
         if (bgType == 0)
             player->UpdateCraftSkill(m_spellInfo->Id);

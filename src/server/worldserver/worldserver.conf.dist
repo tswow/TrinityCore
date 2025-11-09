@@ -1104,7 +1104,7 @@ MaxPrimaryTradeSkill = 2
 #        Range:       0-9
 #        Default:     9
 
-MinPetitionSigns = 9
+MinPetitionSigns = 5
 
 #
 #    MaxGroupXPDistance
@@ -1612,6 +1612,20 @@ AllowTwoSide.Interaction.Auction = 0
 AllowTwoSide.Trade = 0
 
 #
+#    AllowTwoSide.DungeonFinder
+#        Description: Allow players from opposing factions to be matched together through the
+#                     Dungeon Finder system. Players can ONLY group cross-faction via LFG queue,
+#                     NOT through manual invites in the world. Cross-faction groups automatically
+#                     disband 60 seconds after completing the dungeon and leaving the instance.
+#                     Party/raid chat will use universal language for communication.
+#        Default:     0 - (Disabled, factions queue separately)
+#                     1 - (Enabled, unified cross-faction dungeon finder)
+#        Note:        This setting is independent from AllowTwoSide.Interaction.Group.
+#                     Manual world invites remain faction-restricted unless that setting is enabled.
+#
+AllowTwoSide.DungeonFinder = 0
+
+#
 #    TalentsInspecting
 #        Description: Allow/disallow inspecting other characters' talents.
 #                     Doesn't affect game master accounts.
@@ -1774,7 +1788,7 @@ Rate.Creature.Elite.WORLDBOSS.HP = 1
 #                     for a creature
 #        Default:     600
 
-Creature.PickPocketRefillDelay = 600
+Creature.PickPocketRefillDelay = 900
 
 #
 #    ListenRange.Say
@@ -2336,7 +2350,7 @@ Rate.Drop.Item.ReferencedAmount = 1
 #                     1 - (Rate.XP.Quest)
 #                     1 - (Rate.XP.Explore)
 
-Rate.XP.Kill    = 1
+Rate.XP.Kill    = 0.9
 Rate.XP.Quest   = 1
 Rate.XP.Explore = 1
 
@@ -2700,7 +2714,7 @@ Battleground.TrackDeserters.Enable = 0
 #                          of one faction)
 #                     2 - (Experimental, Try to have even teams)
 
-Battleground.InvitationType = 0
+Battleground.InvitationType = 2
 
 #
 #    Battleground.PrematureFinishTimer
@@ -2727,7 +2741,7 @@ Battleground.PremadeGroupWaitForMatch = 1800000
 #        Default:     0 - (Disabled)
 #                     1 - (Enabled)
 
-Battleground.GiveXPForKills = 0
+Battleground.GiveXPForKills = 1
 
 #
 #    Battleground.Random.ResetHour
@@ -3143,14 +3157,14 @@ PlayerStart.AllReputation = 0
 #                     65 - (Weekend only)
 #                     127 - (Always active)
 
-XP.Boost.Daymask = 0
+XP.Boost.Daymask = 65
 
 #
 #    XP.Boost.Rate
 #        Description: The boost multiplier for experience gain during XP boosted days.
 #        Default:     2.0 - (Double experience)
 
-XP.Boost.Rate = 2.0
+XP.Boost.Rate = 1.5
 
 #
 #    PlayerStart.AllSpells

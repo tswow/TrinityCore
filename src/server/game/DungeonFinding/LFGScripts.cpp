@@ -20,6 +20,7 @@
  */
 
 #include "LFGScripts.h"
+#include "Chat.h"
 #include "Common.h"
 #include "Group.h"
 #include "LFGMgr.h"
@@ -71,6 +72,48 @@ void LFGPlayerScript::OnLogin(Player* player, bool /*loginFirst*/)
     }
 
     sLFGMgr->SetTeam(player->GetGUID(), player->GetTeam());
+
+    // Check if player reconnected after completing cross-faction dungeon
+    if (Group* group = player->GetGroup())
+    {
+        if (group->IsCrossFactionLFG() &&
+            !sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_GROUP))
+        {
+            ObjectGuid gguid = group->GetGUID();
+            LfgState state = sLFGMgr->GetState(guid);
+
+            if (state == LFG_STATE_FINISHED_DUNGEON)
+            {
+                Map* currentMap = player->GetMap();
+                if (!currentMap->IsDungeon() && player->IsAlive())
+                {
+                    // Check grace period
+                    uint32 completionTime = sLFGMgr->GetDungeonCompletionTime(gguid);
+                    uint32 currentTime = getMSTime();
+                    uint32 timeSinceCompletion = getMSTimeDiff(completionTime, currentTime);
+
+                    if (timeSinceCompletion > 60000)
+                    {
+                        TC_LOG_INFO("lfg", "Player {} reconnected outside completed cross-faction dungeon, auto-leaving group {}",
+                                   player->GetName(), gguid.ToString());
+
+                        // Clean up LFG data
+                        sLFGMgr->LeaveLfg(guid);
+                        sLFGMgr->SetGroup(guid, ObjectGuid::Empty);
+                        sLFGMgr->RemovePlayerFromGroup(gguid, guid);
+
+                        // Remove from group
+                        group->RemoveMember(guid, GROUP_REMOVEMETHOD_LEAVE, ObjectGuid::Empty, nullptr);
+
+                        // Notify player
+                        ChatHandler(player->GetSession()).PSendSysMessage(
+                            "You have left the cross-faction group after completing the dungeon.");
+                    }
+                }
+            }
+        }
+    }
+
     /// @todo - Restore LfgPlayerData and send proper status to player if it was in a group
 }
 
@@ -105,6 +148,53 @@ void LFGPlayerScript::OnMapChanged(Player* player)
     else
     {
         Group* group = player->GetGroup();
+
+        // Auto-leave cross-faction groups after dungeon completion
+        if (group && group->IsCrossFactionLFG() &&
+            !sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_GROUP))
+        {
+            ObjectGuid guid = player->GetGUID();
+            ObjectGuid gguid = group->GetGUID();
+            LfgState state = sLFGMgr->GetState(guid);
+
+            if (state == LFG_STATE_FINISHED_DUNGEON && player->IsAlive())
+            {
+                // Check grace period (60 seconds)
+                uint32 completionTime = sLFGMgr->GetDungeonCompletionTime(gguid);
+                uint32 currentTime = getMSTime();
+                uint32 timeSinceCompletion = getMSTimeDiff(completionTime, currentTime);
+
+                if (timeSinceCompletion > 60000)  // 60 seconds passed
+                {
+                    TC_LOG_INFO("lfg", "Player {} left completed cross-faction dungeon, auto-leaving group {}",
+                               player->GetName(), gguid.ToString());
+
+                    // Clean up LFG data
+                    sLFGMgr->LeaveLfg(guid);
+                    sLFGMgr->SetGroup(guid, ObjectGuid::Empty);
+                    sLFGMgr->RemovePlayerFromGroup(gguid, guid);
+
+                    // Remove from group
+                    group->RemoveMember(guid, GROUP_REMOVEMETHOD_LEAVE, ObjectGuid::Empty, nullptr);
+
+                    // Notify player
+                    ChatHandler(player->GetSession()).PSendSysMessage(
+                        "You have left the cross-faction group after completing the dungeon.");
+
+                    player->RemoveAurasDueToSpell(LFG_SPELL_LUCK_OF_THE_DRAW);
+                    return;
+                }
+                else
+                {
+                    // Within grace period - notify player
+                    uint32 secondsRemaining = (60000 - timeSinceCompletion) / 1000;
+                    ChatHandler(player->GetSession()).PSendSysMessage(
+                        "Cross-faction group will disband in %u seconds.", secondsRemaining);
+                }
+            }
+        }
+
+        // Original code: disband if last member
         if (group && group->GetMembersCount() == 1)
         {
             sLFGMgr->LeaveLfg(group->GetGUID());

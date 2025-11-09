@@ -396,6 +396,13 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket& recvData)
             // client will incorrectly send LEADER type when sending message to OriginalGroup while being a leader in regular group
             type = group->IsLeader(sender->GetGUID()) ? CHAT_MSG_PARTY_LEADER : CHAT_MSG_PARTY;
 
+            // Force universal language for cross-faction LFG groups
+            if (group->IsCrossFactionLFG() && lang != LANG_ADDON)
+            {
+                lang = LANG_UNIVERSAL;
+                TC_LOG_TRACE("lfg.chat", "Cross-faction LFG party chat - forcing LANG_UNIVERSAL");
+            }
+
             sScriptMgr->OnPlayerChat(GetPlayer(), type, lang, msg, group);
 
             WorldPacket data;
@@ -440,6 +447,13 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket& recvData)
                     return;
             }
 
+            // Force universal language for cross-faction LFG groups
+            if (group->IsCrossFactionLFG() && lang != LANG_ADDON)
+            {
+                lang = LANG_UNIVERSAL;
+                TC_LOG_TRACE("lfg.chat", "Cross-faction LFG raid chat - forcing LANG_UNIVERSAL");
+            }
+
             sScriptMgr->OnPlayerChat(GetPlayer(), type, lang, msg, group);
 
             WorldPacket data;
@@ -458,6 +472,13 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket& recvData)
                     return;
             }
 
+            // Force universal language for cross-faction LFG groups
+            if (group->IsCrossFactionLFG() && lang != LANG_ADDON)
+            {
+                lang = LANG_UNIVERSAL;
+                TC_LOG_TRACE("lfg.chat", "Cross-faction LFG raid leader chat - forcing LANG_UNIVERSAL");
+            }
+
             sScriptMgr->OnPlayerChat(GetPlayer(), type, lang, msg, group);
 
             WorldPacket data;
@@ -470,6 +491,13 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket& recvData)
             Group* group = GetPlayer()->GetGroup();
             if (!group || !(group->isRaidGroup() || sWorld->getBoolConfig(CONFIG_CHAT_PARTY_RAID_WARNINGS)) || !(group->IsLeader(GetPlayer()->GetGUID()) || group->IsAssistant(GetPlayer()->GetGUID())) || group->isBGGroup())
                 return;
+
+            // Force universal language for cross-faction LFG groups
+            if (group->IsCrossFactionLFG() && lang != LANG_ADDON)
+            {
+                lang = LANG_UNIVERSAL;
+                TC_LOG_TRACE("lfg.chat", "Cross-faction LFG raid warning chat - forcing LANG_UNIVERSAL");
+            }
 
             sScriptMgr->OnPlayerChat(GetPlayer(), type, lang, msg, group);
 
