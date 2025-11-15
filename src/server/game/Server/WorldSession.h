@@ -32,9 +32,11 @@
 #include "Packet.h"
 #include "SharedDefines.h"
 #include <boost/circular_buffer_fwd.hpp>
-#include <string>
+#include <ctime>
 #include <map>
 #include <memory>
+#include <set>
+#include <string>
 #include <unordered_map>
 
 class Creature;
@@ -651,6 +653,35 @@ class TC_GAME_API WorldSession
         // Packets cooldown
         time_t GetCalendarEventCreationCooldown() const { return _calendarEventCreationCooldown; }
         void SetCalendarEventCreationCooldown(time_t cooldown) { _calendarEventCreationCooldown = cooldown; }
+
+        // AOE Loot system - virtual loot view
+        struct AOELootSlotMapping
+        {
+            ObjectGuid corpseGuid;      // Which corpse owns this item
+            uint8 originalSlot;         // Slot on that corpse
+            uint32 itemId;              // For validation
+            uint8 quality;              // For display priority
+            bool isQuestItem;           // Quest items get priority
+            bool isValid;               // False if item was looted by someone else
+        };
+
+        Loot* GetVirtualAOELoot() const { return m_virtualAOELoot; }
+        void SetVirtualAOELoot(Loot* loot);
+        void ClearVirtualAOELoot();
+
+        std::vector<AOELootSlotMapping>* GetAOESlotMap() { return &m_aoeSlotMap; }
+        std::set<ObjectGuid> const& GetInvolvedCorpses() const { return m_aoeInvolvedCorpses; }
+
+        int16 FindVirtualSlot(ObjectGuid corpseGuid, uint8 realSlot);
+        void InvalidateVirtualSlot(uint8 virtualSlot);
+        void RemoveCorpseFromAOEView(ObjectGuid corpseGuid);
+
+        // AOE Loot accessors for external use
+        time_t GetAOELastMergeTime() const;
+        void SetAOELastMergeTime(time_t time);
+        std::set<ObjectGuid>& GetAOEMergedCorpses();
+        std::set<ObjectGuid>& GetAOEInvolvedCorpsesNonConst();
+        std::vector<AOELootSlotMapping>& GetAOESlotMapNonConst();
 
     public:                                                 // opcodes handlers
 
@@ -1308,6 +1339,13 @@ class TC_GAME_API WorldSession
         // @tswow-begin (Using Rochet2/Multivendor)
         uint32 m_currentVendorEntry = 0;
         // @tswow-end
+
+        // AOE Loot session data (with security mitigations)
+        Loot* m_virtualAOELoot;                              // Temporary merged loot view (manually deleted in destructor)
+        std::vector<AOELootSlotMapping> m_aoeSlotMap;        // Virtual slot → Real corpse mapping
+        std::set<ObjectGuid> m_aoeInvolvedCorpses;           // All corpses in virtual view
+        std::set<ObjectGuid> m_aoeMergedCorpses;             // Corpses already merged (prevent refresh exploit)
+        time_t m_aoeLastMergeTime;                           // Cooldown to prevent spam DoS
         ObjectGuid m_currentBankerGUID;
 
         std::unique_ptr<boost::circular_buffer<std::pair<int64, uint32>>> _timeSyncClockDeltaQueue; // first member: clockDelta. Second member: latency of the packet exchange that was used to compute that clockDelta.

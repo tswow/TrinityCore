@@ -502,6 +502,14 @@ void World::LoadConfigSettings(bool reload)
     m_bool_configs[CONFIG_TSWOW_LUA_ENABLED] = sConfigMgr->GetBoolDefault("TSWoW.EnableLua", true);
     // @tswow-en
 
+    ///- AOE Loot settings
+    m_bool_configs[CONFIG_AOE_LOOT_ENABLE] = sConfigMgr->GetBoolDefault("AOELoot.Enable", true);
+    m_float_configs[CONFIG_AOE_LOOT_RANGE] = sConfigMgr->GetFloatDefault("AOELoot.Range", 10.0f);
+
+    TC_LOG_INFO("server.loading", "AOE Loot System: {} (Range: {:.1f} yards)",
+        (m_bool_configs[CONFIG_AOE_LOOT_ENABLE] ? "ENABLED" : "DISABLED"),
+        m_float_configs[CONFIG_AOE_LOOT_RANGE]);
+
     ///- Read the player limit and the Message of the day from the config file
     SetPlayerAmountLimit(sConfigMgr->GetIntDefault("PlayerLimit", 100));
     Motd::SetMotd(sConfigMgr->GetStringDefault("Motd", "Welcome to a Trinity Core Server."));

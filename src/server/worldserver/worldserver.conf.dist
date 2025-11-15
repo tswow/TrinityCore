@@ -4397,3 +4397,30 @@ TSWoW.EnableLua = true
 
 #
 ###################################################################################################
+#
+#    AOE LOOT SETTINGS
+#
+###################################################################################################
+
+#
+#    AOELoot.Enable
+#        Description: Enable Area of Effect (AOE) looting.
+#                     When enabled, looting a creature corpse will show items from all nearby
+#                     corpses within AOELoot.Range yards in a single merged loot window.
+#                     Items are prioritized by quest items first, then by rarity.
+#                     Maximum 18 items shown (client limit).
+#        Default:     1 (enabled)
+#                     0 (disabled)
+
+AOELoot.Enable = 1
+
+#
+#    AOELoot.Range
+#        Description: Range in yards to search for nearby corpses when AOE looting.
+#                     Corpses within this range will have their loot merged into the main window.
+#        Default:     10.0
+
+AOELoot.Range = 10.0
+
+#
+###################################################################################################

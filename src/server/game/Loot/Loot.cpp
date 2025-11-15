@@ -115,7 +115,7 @@ void LootItem::AddAllowedLooter(Player const* player)
 // --------- Loot ---------
 //
 
-Loot::Loot(uint32 _gold /*= 0*/) : gold(_gold), unlootedCount(0), roundRobinPlayer(), loot_type(LOOT_NONE), maxDuplicates(1), containerID(0)
+Loot::Loot(uint32 _gold /*= 0*/) : gold(_gold), unlootedCount(0), roundRobinPlayer(), loot_type(LOOT_NONE), maxDuplicates(1), containerID(0), m_ownerCreature(nullptr)
 {
 }
 
@@ -390,6 +390,9 @@ void Loot::NotifyItemRemoved(uint8 lootIndex)
         else
             PlayersLooting.erase(i);
     }
+
+    // Notify AOE viewers that an item was removed from this corpse
+    NotifyAOEViewers(lootIndex);
 }
 
 void Loot::NotifyMoneyRemoved()
@@ -835,4 +838,49 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
     b.put<uint8>(count_pos, itemsShown);
 
     return b;
+}
+
+// AOE Loot: Notify all players viewing this corpse in their AOE loot window
+void Loot::NotifyAOEViewers(uint8 realSlot)
+{
+    // Only process if this loot has an owner creature
+    if (!m_ownerCreature)
+        return;
+
+    ObjectGuid corpseGuid = m_ownerCreature->GetGUID();
+
+    // Access the global corpse viewer registry (defined in AOELoot.cpp)
+    extern std::map<ObjectGuid, std::set<WorldSession*>> s_corpseViewers;
+    extern std::mutex s_corpseViewersMutex;
+
+    std::lock_guard<std::mutex> lock(s_corpseViewersMutex);
+
+    auto itr = s_corpseViewers.find(corpseGuid);
+    if (itr == s_corpseViewers.end())
+        return; // No one viewing this corpse
+
+    // Iterate through all sessions viewing this corpse
+    for (WorldSession* session : itr->second)
+    {
+        if (!session)
+            continue;
+
+        Player* viewer = session->GetPlayer();
+        if (!viewer || !viewer->IsInWorld())
+            continue;
+
+        // Find which virtual slot corresponds to this real corpse+slot
+        int16 virtualSlot = session->FindVirtualSlot(corpseGuid, realSlot);
+        if (virtualSlot < 0)
+            continue; // This item not in their virtual view
+
+        // Send removal notification for virtual slot
+        viewer->SendNotifyLootItemRemoved(static_cast<uint8>(virtualSlot));
+
+        // Invalidate the virtual slot
+        session->InvalidateVirtualSlot(static_cast<uint8>(virtualSlot));
+
+        TC_LOG_DEBUG("loot", "AOE Loot: Notified player %s that item in virtual slot %d was removed",
+            viewer->GetName().c_str(), virtualSlot);
+    }
 }

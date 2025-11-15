@@ -53,6 +53,7 @@
 #include "Vehicle.h"
 #include "World.h"
 #include "WorldPacket.h"
+#include "AOELoot.h"
 #include <G3D/g3dmath.h>
 // @tswow-begin
 #include "TSProfile.h"
@@ -449,6 +450,9 @@ void Creature::RemoveCorpse(bool setSpawnTime, bool destroyForNearbyPlayers)
 {
     if (getDeathState() != CORPSE)
         return;
+
+    // AOE Loot: Clean up viewer registry when corpse is removed
+    RemoveCorpseFromViewerRegistry(GetGUID());
 
     if (m_respawnCompatibilityMode)
     {

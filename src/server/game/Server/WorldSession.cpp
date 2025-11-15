@@ -41,6 +41,7 @@
 #include "GuildMgr.h"
 #include "Hyperlinks.h"
 #include "Log.h"
+#include "Loot.h"
 #include "Map.h"
 #include "Metric.h"
 #include "MoveSpline.h"
@@ -141,6 +142,7 @@ WorldSession::WorldSession(uint32 id, std::string&& name, std::shared_ptr<WorldS
     _RBACData(nullptr),
     expireTime(60000), // 1 min after socket loss, session is deleted
     forceExit(false),
+    m_virtualAOELoot(nullptr),
     m_currentBankerGUID(),
     _timeSyncClockDeltaQueue(std::make_unique<boost::circular_buffer<std::pair<int64, uint32>>>(6)),
     _timeSyncClockDelta(0),
@@ -178,6 +180,9 @@ WorldSession::~WorldSession()
     delete _RBACData;
 
     delete _gameClient;
+
+    // AOE Loot: Clean up virtual loot if still allocated
+    delete m_virtualAOELoot;
 
     ///- empty incoming packet queue
     WorldPacket* packet = nullptr;
@@ -1794,3 +1799,76 @@ void WorldSession::HandleCustom(WorldPacket& packet)
         .ReceivePacket(packet.size(),(char*)packet.contents());
 }
 // @tswow-end
+
+// AOE Loot helper methods
+void WorldSession::SetVirtualAOELoot(Loot* loot)
+{
+    delete m_virtualAOELoot;  // Delete old loot if any
+    m_virtualAOELoot = loot;
+}
+
+void WorldSession::ClearVirtualAOELoot()
+{
+    delete m_virtualAOELoot;
+    m_virtualAOELoot = nullptr;
+    m_aoeSlotMap.clear();
+    m_aoeInvolvedCorpses.clear();
+}
+
+int16 WorldSession::FindVirtualSlot(ObjectGuid corpseGuid, uint8 realSlot)
+{
+    for (size_t i = 0; i < m_aoeSlotMap.size(); ++i)
+    {
+        const AOELootSlotMapping& mapping = m_aoeSlotMap[i];
+        if (mapping.corpseGuid == corpseGuid && mapping.originalSlot == realSlot && mapping.isValid)
+            return static_cast<int16>(i);
+    }
+    return -1;
+}
+
+void WorldSession::InvalidateVirtualSlot(uint8 virtualSlot)
+{
+    if (virtualSlot < m_aoeSlotMap.size())
+    {
+        m_aoeSlotMap[virtualSlot].isValid = false;
+    }
+}
+
+void WorldSession::RemoveCorpseFromAOEView(ObjectGuid corpseGuid)
+{
+    // Invalidate all slots belonging to this corpse
+    for (AOELootSlotMapping& mapping : m_aoeSlotMap)
+    {
+        if (mapping.corpseGuid == corpseGuid)
+            mapping.isValid = false;
+    }
+
+    // Remove from involved corpses set
+    m_aoeInvolvedCorpses.erase(corpseGuid);
+}
+
+// AOE Loot accessor implementations
+time_t WorldSession::GetAOELastMergeTime() const
+{
+    return m_aoeLastMergeTime;
+}
+
+void WorldSession::SetAOELastMergeTime(time_t time)
+{
+    m_aoeLastMergeTime = time;
+}
+
+std::set<ObjectGuid>& WorldSession::GetAOEMergedCorpses()
+{
+    return m_aoeMergedCorpses;
+}
+
+std::set<ObjectGuid>& WorldSession::GetAOEInvolvedCorpsesNonConst()
+{
+    return m_aoeInvolvedCorpses;
+}
+
+std::vector<WorldSession::AOELootSlotMapping>& WorldSession::GetAOESlotMapNonConst()
+{
+    return m_aoeSlotMap;
+}

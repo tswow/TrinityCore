@@ -11169,6 +11169,9 @@ bool Unit::InitTamedPet(Pet* pet, uint8 level, uint32 spell_id)
             }
             // @tswow-end
 
+            // AOE Loot: Set owner creature for real-time update notifications
+            loot->SetOwnerCreature(creature);
+
             if (uint32 lootid = creature->GetCreatureTemplate()->lootid)
                 // @tswow-begin
                 if(loot->generateNormally)

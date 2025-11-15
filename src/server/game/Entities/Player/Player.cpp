@@ -63,6 +63,7 @@
 #include "Log.h"
 #include "LootItemStorage.h"
 #include "LootMgr.h"
+#include "AOELoot.h"
 #include "Mail.h"
 #include "MailPackets.h"
 #include "MapManager.h"
@@ -8446,8 +8447,8 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type)
     Loot* loot;
     PermissionTypes permission = ALL_PERMISSION;
 
-    TC_LOG_DEBUG("loot", "Player::SendLoot: Player: '{}' ({}), Loot: {}",
-        GetName(), GetGUID().ToString(), guid.ToString());
+    TC_LOG_INFO("loot", "Player::SendLoot CALLED: Player: '{}' ({}), Loot: {}, loot_type={}",
+        GetName(), GetGUID().ToString(), guid.ToString(), loot_type);
     if (guid.IsGameObject())
     {
         GameObject* go = GetMap()->GetGameObject(guid);
@@ -8677,8 +8678,13 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type)
     {
         Creature* creature = GetMap()->GetCreature(guid);
 
+        // Use AOE loot range if enabled, otherwise use default INTERACTION_DISTANCE
+        float lootRange = INTERACTION_DISTANCE;
+        if (sWorld->getBoolConfig(CONFIG_AOE_LOOT_ENABLE))
+            lootRange = sWorld->getFloatConfig(CONFIG_AOE_LOOT_RANGE);
+
         // must be in range and creature must be alive for pickpocket and must be dead for another loot
-        if (!creature || creature->IsAlive() != (loot_type == LOOT_PICKPOCKETING) || !creature->IsWithinDistInMap(this, INTERACTION_DISTANCE))
+        if (!creature || creature->IsAlive() != (loot_type == LOOT_PICKPOCKETING) || !creature->IsWithinDistInMap(this, lootRange))
         {
             SendLootRelease(guid);
             return;
@@ -8829,6 +8835,18 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type)
 
     // need know merged fishing/corpse loot type for achievements
     loot->loot_type = loot_type;
+
+    // AOE Loot: Try to build virtual merged loot for corpses (AFTER loot_type is set)
+    if (loot_type == LOOT_CORPSE && guid.IsCreature())
+    {
+        Creature* creature = GetMap()->GetCreature(guid);
+        if (creature && !creature->IsAlive())
+        {
+            Loot* virtualLoot = BuildVirtualAOELoot(creature, this, m_session);
+            if (virtualLoot)
+                loot = virtualLoot; // Use virtual loot instead of real corpse loot
+        }
+    }
 
     if (permission != NONE_PERMISSION)
     {

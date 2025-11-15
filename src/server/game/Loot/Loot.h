@@ -231,8 +231,18 @@ struct TC_GAME_API Loot
     //  Only set for inventory items that can be right-click looted
     uint32 containerID;
 
+    // AOE Loot: Back-reference to owner creature for real-time updates
+    Creature* m_ownerCreature;
+
+    // AOE Loot: Mutex to prevent double-loot race condition
+    std::mutex m_lootMutex;
+
     Loot(uint32 _gold = 0);
     ~Loot();
+
+    void SetOwnerCreature(Creature* creature) { m_ownerCreature = creature; }
+    Creature* GetOwnerCreature() const { return m_ownerCreature; }
+    void NotifyAOEViewers(uint8 realSlot);
 
     // if loot becomes invalid this reference is used to inform the listener
     void addLootValidatorRef(LootValidatorRef* pLootValidatorRef)
