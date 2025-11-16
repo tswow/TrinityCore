@@ -680,6 +680,7 @@ class TC_GAME_API WorldSession
         time_t GetAOELastMergeTime() const;
         void SetAOELastMergeTime(time_t time);
         std::set<ObjectGuid>& GetAOEMergedCorpses();
+        std::set<ObjectGuid>* GetAOEInvolvedCorpses();
         std::set<ObjectGuid>& GetAOEInvolvedCorpsesNonConst();
         std::vector<AOELootSlotMapping>& GetAOESlotMapNonConst();
 

@@ -1863,6 +1863,11 @@ std::set<ObjectGuid>& WorldSession::GetAOEMergedCorpses()
     return m_aoeMergedCorpses;
 }
 
+std::set<ObjectGuid>* WorldSession::GetAOEInvolvedCorpses()
+{
+    return m_aoeInvolvedCorpses.empty() ? nullptr : &m_aoeInvolvedCorpses;
+}
+
 std::set<ObjectGuid>& WorldSession::GetAOEInvolvedCorpsesNonConst()
 {
     return m_aoeInvolvedCorpses;

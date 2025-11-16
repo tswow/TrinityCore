@@ -47,6 +47,7 @@ struct LootItemWithPriority
     LootItem* item;
     ObjectGuid corpseGuid;
     uint8 originalSlot;
+    bool isQuestItem; // true = from quest_items list, false = from items list
     uint8 priority;
 
     bool operator<(const LootItemWithPriority& other) const
@@ -60,7 +61,7 @@ struct LootItemWithPriority
 };
 
 // Calculate item priority (quest items + rarity)
-uint8 CalculateItemPriority(LootItem* item, Player* player)
+uint8 CalculateItemPriority(LootItem* item, Player* /*player*/)
 {
     // Quest items get highest priority
     if (item->needs_quest)
@@ -82,7 +83,7 @@ uint8 CalculateItemPriority(LootItem* item, Player* player)
 }
 
 // Search for nearby dead creatures
-void SearchNearbyDeadCreatures(Player* player, Creature* mainCreature, float range, std::list<Creature*>& outList)
+void SearchNearbyDeadCreatures(Player* player, Creature* /*mainCreature*/, float range, std::list<Creature*>& outList)
 {
     struct DeadCreatureCheck
     {
@@ -124,7 +125,8 @@ void CollectItemsFromCorpse(Creature* creature, Player* player,
     // Add gold
     outGold += loot->gold;
 
-    // Collect regular items
+    // Collect ONLY regular items for virtual loot
+    // Quest items will NOT be virtualized - they stay on real corpses
     for (uint8 i = 0; i < loot->items.size(); ++i)
     {
         LootItem& item = loot->items[i];
@@ -142,12 +144,14 @@ void CollectItemsFromCorpse(Creature* creature, Player* player,
         itemPriority.item = &item;
         itemPriority.corpseGuid = creature->GetGUID();
         itemPriority.originalSlot = i;
+        itemPriority.isQuestItem = false; // Regular items only
         itemPriority.priority = CalculateItemPriority(&item, player);
 
         outItems.push_back(itemPriority);
     }
 
-    // TODO: Handle quest_items separately (they use different structure)
+    // NOTE: Quest items are NOT collected here
+    // They will be handled separately by keeping them on real corpses
 }
 
 // Build virtual AOE loot view with all security mitigations
@@ -210,6 +214,9 @@ Loot* BuildVirtualAOELoot(Creature* mainCreature, Player* player, WorldSession* 
     }
 
     // Check if we actually merged anything
+    printf("[AOE QUEST DEBUG] Total items collected: %zu (from %zu corpses)\n", allItems.size(), involvedCorpses.size());
+    fflush(stdout);
+
     if (allItems.empty() || involvedCorpses.size() <= 1)
         return nullptr; // Use normal loot
 
@@ -222,8 +229,19 @@ Loot* BuildVirtualAOELoot(Creature* mainCreature, Player* player, WorldSession* 
     virtualLoot->loot_type = LOOT_CORPSE;
     virtualLoot->unlootedCount = 0;
 
+    // IMPORTANT: Set loot owner GUID so quest items work properly
+    // Use the main creature's loot recipient
+    if (Player* recipient = mainCreature->GetLootRecipient())
+        virtualLoot->lootOwnerGUID = recipient->GetGUID();
+    else if (Group* recipientGroup = mainCreature->GetLootRecipientGroup())
+        virtualLoot->lootOwnerGUID = recipientGroup->GetLeaderGUID();
+
+    printf("[AOE QUEST DEBUG] Set virtualLoot->lootOwnerGUID = %s\n", virtualLoot->lootOwnerGUID.ToString().c_str());
+    fflush(stdout);
+
     std::vector<WorldSession::AOELootSlotMapping> slotMap;
 
+    // Add only REGULAR items to virtual loot (quest items stay on real corpses)
     uint32 itemCount = 0;
     for (LootItemWithPriority& itemPriority : allItems)
     {
@@ -231,16 +249,16 @@ Loot* BuildVirtualAOELoot(Creature* mainCreature, Player* player, WorldSession* 
         if (itemCount >= AOE_MAX_DISPLAYED_ITEMS)
             break;
 
-        // Add to virtual loot
+        // Only regular items should be in allItems now (quest items removed from collection)
         virtualLoot->items.push_back(*itemPriority.item);
         virtualLoot->unlootedCount++;
 
-        // Create slot mapping
+        // Create slot mapping for regular items only
         WorldSession::AOELootSlotMapping mapping;
         mapping.corpseGuid = itemPriority.corpseGuid;
         mapping.originalSlot = itemPriority.originalSlot;
         mapping.itemId = itemPriority.item->itemid;
-        mapping.isQuestItem = itemPriority.item->needs_quest;
+        mapping.isQuestItem = false; // Only regular items in virtual loot
         mapping.isValid = true;
 
         // Get item quality from template
@@ -250,6 +268,105 @@ Loot* BuildVirtualAOELoot(Creature* mainCreature, Player* player, WorldSession* 
         slotMap.push_back(mapping);
         itemCount++;
     }
+
+    // Populate FFA and conditional items for regular loot
+    virtualLoot->FillNotNormalLootFor(player, true);
+
+    printf("[AOE DEBUG] Virtual loot created: %zu regular items\n", virtualLoot->items.size());
+    printf("[AOE DEBUG] Max slots: %u\n", virtualLoot->GetMaxSlotInLootFor(player));
+    fflush(stdout);
+
+    // CRITICAL: Prepare REAL corpses for quest item looting AND collect quest items for display
+    // Quest items stay on real corpses but we copy them to virtual loot for client display
+    // We also create slot mappings for quest items so we can loot from the correct corpse
+    printf("[AOE DEBUG] Preparing %zu real corpses for quest item visibility\n", involvedCorpses.size());
+    fflush(stdout);
+
+    std::vector<WorldSession::AOELootSlotMapping> questItemMappings;
+
+    for (ObjectGuid corpseGuid : involvedCorpses)
+    {
+        Creature* corpse = player->GetMap()->GetCreature(corpseGuid);
+        if (!corpse)
+            continue;
+
+        // Populate the real corpse's PlayerQuestItems map for this player
+        corpse->loot.FillNotNormalLootFor(player, true);
+
+        printf("[AOE DEBUG]   Corpse %s: %zu quest items total\n",
+            corpseGuid.ToString().c_str(), corpse->loot.quest_items.size());
+        fflush(stdout);
+
+        // Get quest items available for this player from this corpse
+        NotNormalLootItemMap& questItemsMap = corpse->loot.GetPlayerQuestItemsNonConst();
+        auto itr = questItemsMap.find(player->GetGUID());
+        if (itr != questItemsMap.end() && itr->second)
+        {
+            NotNormalLootItemList* playerQuestItems = itr->second;
+            printf("[AOE DEBUG]   Player has access to %zu quest items on this corpse\n", playerQuestItems->size());
+            fflush(stdout);
+
+            // Copy each quest item to virtual loot for display AND create mapping
+            for (NotNormalLootItem& questItemSlot : *playerQuestItems)
+            {
+                if (questItemSlot.index >= corpse->loot.quest_items.size())
+                    continue;
+
+                LootItem& questItem = corpse->loot.quest_items[questItemSlot.index];
+                if (questItem.is_looted || questItemSlot.is_looted)
+                    continue;
+
+                // Add to virtual loot's quest_items for display (but we'll loot from real corpse)
+                virtualLoot->quest_items.push_back(questItem);
+                virtualLoot->unlootedCount++;
+
+                // Create mapping for this quest item
+                WorldSession::AOELootSlotMapping questMapping;
+                questMapping.corpseGuid = corpseGuid;
+                questMapping.originalSlot = questItemSlot.index;
+                questMapping.itemId = questItem.itemid;
+                questMapping.isQuestItem = true;
+                questMapping.isValid = true;
+
+                ItemTemplate const* proto = sObjectMgr->GetItemTemplate(questItem.itemid);
+                questMapping.quality = proto ? proto->Quality : 0;
+
+                questItemMappings.push_back(questMapping);
+
+                printf("[AOE DEBUG]     Added quest item %u to virtual display (mapping: corpse=%s, slot=%u)\n",
+                    questItem.itemid, corpseGuid.ToString().c_str(), questItemSlot.index);
+                fflush(stdout);
+            }
+        }
+    }
+
+    // Populate quest items in PlayerQuestItems map for virtual loot so client displays them
+    if (!virtualLoot->quest_items.empty())
+    {
+        NotNormalLootItemMap& virtualQuestMap = virtualLoot->GetPlayerQuestItemsNonConst();
+        NotNormalLootItemList* virtualPlayerQuestList = new NotNormalLootItemList();
+
+        for (uint8 i = 0; i < virtualLoot->quest_items.size(); ++i)
+        {
+            virtualPlayerQuestList->push_back(NotNormalLootItem(i, false));
+        }
+
+        virtualQuestMap[player->GetGUID()] = virtualPlayerQuestList;
+
+        printf("[AOE DEBUG] Virtual loot now has %zu quest items for display\n", virtualLoot->quest_items.size());
+        fflush(stdout);
+    }
+
+    // Append quest item mappings to the regular slot map
+    // Quest items come after regular items in the slot numbering
+    for (auto& questMapping : questItemMappings)
+    {
+        slotMap.push_back(questMapping);
+    }
+
+    printf("[AOE DEBUG] Total slot mappings: %zu (regular items) + %zu (quest items) = %zu\n",
+        slotMap.size() - questItemMappings.size(), questItemMappings.size(), slotMap.size());
+    fflush(stdout);
 
     // Store in session (transfers ownership to session)
     session->SetVirtualAOELoot(virtualLoot);

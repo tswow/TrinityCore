@@ -215,6 +215,9 @@ struct TC_GAME_API Loot
     NotNormalLootItemMap const& GetPlayerFFAItems() const { return PlayerFFAItems; }
     NotNormalLootItemMap const& GetPlayerNonQuestNonFFAConditionalItems() const { return PlayerNonQuestNonFFAConditionalItems; }
 
+    // Non-const accessor for AOE loot to manually populate quest items
+    NotNormalLootItemMap& GetPlayerQuestItemsNonConst() { return PlayerQuestItems; }
+
     std::vector<LootItem> items;
     std::vector<LootItem> quest_items;
     uint32 gold;
@@ -273,8 +276,10 @@ struct TC_GAME_API Loot
     bool hasItemFor(Player const* player) const;
     bool hasOverThresholdItem() const;
 
+    // Made public for AOE loot - needed to populate PlayerQuestItems for virtual loot
+    void FillNotNormalLootFor(Player* player, bool presentAtLooting);
+
     private:
-        void FillNotNormalLootFor(Player* player, bool presentAtLooting);
         NotNormalLootItemList* FillFFALoot(Player* player);
         NotNormalLootItemList* FillQuestLoot(Player* player);
         NotNormalLootItemList* FillNonQuestNonFFAConditionalLoot(Player* player, bool presentAtLooting);

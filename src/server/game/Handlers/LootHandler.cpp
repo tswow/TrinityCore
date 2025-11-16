@@ -99,12 +99,13 @@ void WorldSession::HandleAutostoreLootItemOpcode(WorldPacket& recvData)
         loot = &creature->loot;
     }
 
-    // AOE Loot: Check if this is virtual loot, translate to real corpse
+    // AOE Loot: Dual-path approach - regular items use virtual loot, quest items use real corpses
+    Loot* virtualLoot = GetVirtualAOELoot();
     std::vector<AOELootSlotMapping>* slotMap = GetAOESlotMap();
-    if (slotMap && !slotMap->empty() && lootSlot < slotMap->size())
-    {
-        const AOELootSlotMapping& mapping = (*slotMap)[lootSlot];
+    std::set<ObjectGuid>* involvedCorpses = GetAOEInvolvedCorpses();
 
+    if (virtualLoot && slotMap && involvedCorpses)
+    {
         // Security: Validate slot index doesn't exceed displayed limit
         const uint8 MAX_DISPLAYED_ITEMS = 18;
         if (lootSlot >= MAX_DISPLAYED_ITEMS)
@@ -113,101 +114,218 @@ void WorldSession::HandleAutostoreLootItemOpcode(WorldPacket& recvData)
             return;
         }
 
-        // Security: Validate mapping is still valid
-        if (!mapping.isValid)
+        // PATH 1: Regular items (slots 0 to virtualLoot->items.size()-1)
+        if (lootSlot < virtualLoot->items.size())
         {
-            player->SendLootError(lguid, LOOT_ERROR_DIDNT_KILL);
-            return;
-        }
+            // Security: Validate slot mapping exists
+            if (lootSlot >= slotMap->size())
+            {
+                player->SendLootError(lguid, LOOT_ERROR_DIDNT_KILL);
+                return;
+            }
 
-        // Get real corpse from mapping
-        Creature* realCorpse = player->GetMap()->GetCreature(mapping.corpseGuid);
-        if (!realCorpse)
-        {
-            InvalidateVirtualSlot(lootSlot);
-            player->SendLootError(lguid, LOOT_ERROR_DIDNT_KILL);
-            return;
-        }
+            const AOELootSlotMapping& mapping = (*slotMap)[lootSlot];
 
-        // Security: Validate distance to REAL corpse using AOE loot range
-        float aoeLootRange = sWorld->getFloatConfig(CONFIG_AOE_LOOT_RANGE);
-        if (!realCorpse->IsWithinDistInMap(player, aoeLootRange))
-        {
-            player->SendLootError(lguid, LOOT_ERROR_TOO_FAR);
-            return;
-        }
+            // Security: Validate mapping is still valid
+            if (!mapping.isValid)
+            {
+                player->SendLootError(lguid, LOOT_ERROR_DIDNT_KILL);
+                return;
+            }
 
-        // Security: Validate item hasn't changed (GUID reuse protection)
-        if (mapping.originalSlot >= realCorpse->loot.items.size())
-        {
-            InvalidateVirtualSlot(lootSlot);
-            player->SendLootError(lguid, LOOT_ERROR_DIDNT_KILL);
-            return;
-        }
-
-        LootItem& realItem = realCorpse->loot.items[mapping.originalSlot];
-        if (realItem.itemid != mapping.itemId || realItem.is_looted)
-        {
-            InvalidateVirtualSlot(lootSlot);
-            player->SendLootError(lguid, LOOT_ERROR_DIDNT_KILL);
-            return;
-        }
-
-        // Security: Re-check loot permissions (group loot rules might have changed)
-        // For AOE loot, we're more lenient - if player can open the main corpse loot window,
-        // they should be able to loot from merged corpses. The real permission check
-        // happens in StoreLootItem anyway.
-        // if (!realCorpse->loot.hasItemFor(player))
-        // {
-        //     player->SendLootError(lguid, LOOT_ERROR_DIDNT_KILL);
-        //     return;
-        // }
-
-        // Security: Check if item is blocked for rolling
-        if (realItem.is_blocked)
-        {
-            player->SendLootError(lguid, LOOT_ERROR_LOCKED);
-            return;
-        }
-
-        // CRITICAL SECTION: Lock the loot to prevent double-loot race condition
-        {
-            std::lock_guard<std::mutex> lock(realCorpse->loot.m_lootMutex);
-
-            // Double-check item is still available after acquiring lock
-            if (realItem.is_looted)
+            // Get real corpse from mapping
+            Creature* realCorpse = player->GetMap()->GetCreature(mapping.corpseGuid);
+            if (!realCorpse)
             {
                 InvalidateVirtualSlot(lootSlot);
                 player->SendLootError(lguid, LOOT_ERROR_DIDNT_KILL);
                 return;
             }
 
-            // Loot from REAL corpse using REAL slot
-            player->StoreLootItem(mapping.originalSlot, &realCorpse->loot);
-        }
-
-        // Mark virtual slot as invalid
-        InvalidateVirtualSlot(lootSlot);
-
-        // Update virtual loot display
-        if (Loot* virtualLoot = GetVirtualAOELoot())
-        {
-            if (lootSlot < virtualLoot->items.size())
+            // Security: Validate distance to REAL corpse using AOE loot range
+            float aoeLootRange = sWorld->getFloatConfig(CONFIG_AOE_LOOT_RANGE);
+            if (!realCorpse->IsWithinDistInMap(player, aoeLootRange))
             {
-                virtualLoot->items[lootSlot].is_looted = true;
+                player->SendLootError(lguid, LOOT_ERROR_TOO_FAR);
+                return;
+            }
+
+            // Security: Validate item hasn't changed (GUID reuse protection)
+            if (mapping.originalSlot >= realCorpse->loot.items.size())
+            {
+                InvalidateVirtualSlot(lootSlot);
+                player->SendLootError(lguid, LOOT_ERROR_DIDNT_KILL);
+                return;
+            }
+
+            LootItem& realItem = realCorpse->loot.items[mapping.originalSlot];
+            if (realItem.itemid != mapping.itemId || realItem.is_looted)
+            {
+                InvalidateVirtualSlot(lootSlot);
+                player->SendLootError(lguid, LOOT_ERROR_DIDNT_KILL);
+                return;
+            }
+
+            // Security: Check if item is blocked for rolling
+            if (realItem.is_blocked)
+            {
+                player->SendLootError(lguid, LOOT_ERROR_LOCKED);
+                return;
+            }
+
+            // CRITICAL SECTION: Lock the loot to prevent double-loot race condition
+            {
+                std::lock_guard<std::mutex> lock(realCorpse->loot.m_lootMutex);
+
+                // Double-check item is still available after acquiring lock
+                if (realItem.is_looted)
+                {
+                    InvalidateVirtualSlot(lootSlot);
+                    player->SendLootError(lguid, LOOT_ERROR_DIDNT_KILL);
+                    return;
+                }
+
+                printf("[AOE DEBUG] Looting regular item: itemid=%u, realSlot=%u\n",
+                    mapping.itemId, mapping.originalSlot);
+                fflush(stdout);
+
+                // Loot from REAL corpse using REAL slot
+                player->StoreLootItem(mapping.originalSlot, &realCorpse->loot);
+            }
+
+            // Mark virtual slot as invalid
+            InvalidateVirtualSlot(lootSlot);
+
+            // Update virtual loot display
+            virtualLoot->items[lootSlot].is_looted = true;
+            if (virtualLoot->unlootedCount > 0)
+                virtualLoot->unlootedCount--;
+
+            // Update visual state of the real corpse if it's now empty
+            if (realCorpse->loot.isLooted())
+            {
+                realCorpse->RemoveDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
+                realCorpse->AllLootRemovedFromCorpse();
+            }
+
+            return;
+        }
+        // PATH 2: Quest items (slots >= virtualLoot->items.size())
+        // Quest items use the same slot mapping system as regular items
+        else
+        {
+            // Security: Validate slot mapping exists
+            if (lootSlot >= slotMap->size())
+            {
+                player->SendLootError(lguid, LOOT_ERROR_DIDNT_KILL);
+                return;
+            }
+
+            const AOELootSlotMapping& mapping = (*slotMap)[lootSlot];
+
+            printf("[AOE DEBUG] Looting quest item at virtual slot %u: itemid=%u, corpse=%s, realSlot=%u\n",
+                lootSlot, mapping.itemId, mapping.corpseGuid.ToString().c_str(), mapping.originalSlot);
+            fflush(stdout);
+
+            // Security: Validate mapping is still valid and is a quest item
+            if (!mapping.isValid || !mapping.isQuestItem)
+            {
+                player->SendLootError(lguid, LOOT_ERROR_DIDNT_KILL);
+                return;
+            }
+
+            // Get real corpse from mapping
+            Creature* realCorpse = player->GetMap()->GetCreature(mapping.corpseGuid);
+            if (!realCorpse)
+            {
+                InvalidateVirtualSlot(lootSlot);
+                player->SendLootError(lguid, LOOT_ERROR_DIDNT_KILL);
+                return;
+            }
+
+            // Security: Validate distance to REAL corpse using AOE loot range
+            float aoeLootRange = sWorld->getFloatConfig(CONFIG_AOE_LOOT_RANGE);
+            if (!realCorpse->IsWithinDistInMap(player, aoeLootRange))
+            {
+                player->SendLootError(lguid, LOOT_ERROR_TOO_FAR);
+                return;
+            }
+
+            // Security: Validate quest item hasn't changed (GUID reuse protection)
+            if (mapping.originalSlot >= realCorpse->loot.quest_items.size())
+            {
+                InvalidateVirtualSlot(lootSlot);
+                player->SendLootError(lguid, LOOT_ERROR_DIDNT_KILL);
+                return;
+            }
+
+            LootItem& realQuestItem = realCorpse->loot.quest_items[mapping.originalSlot];
+            if (realQuestItem.itemid != mapping.itemId || realQuestItem.is_looted)
+            {
+                InvalidateVirtualSlot(lootSlot);
+                player->SendLootError(lguid, LOOT_ERROR_DIDNT_KILL);
+                return;
+            }
+
+            // CRITICAL SECTION: Lock the loot to prevent double-loot race condition
+            {
+                std::lock_guard<std::mutex> lock(realCorpse->loot.m_lootMutex);
+
+                // Double-check item is still available after acquiring lock
+                if (realQuestItem.is_looted)
+                {
+                    InvalidateVirtualSlot(lootSlot);
+                    player->SendLootError(lguid, LOOT_ERROR_DIDNT_KILL);
+                    return;
+                }
+
+                // Calculate real slot index for StoreLootItem (quest items come after regular items)
+                uint8 realSlotIndex = realCorpse->loot.items.size() + mapping.originalSlot;
+
+                printf("[AOE DEBUG]   Looting quest item from real corpse: realSlotIndex=%u\n", realSlotIndex);
+                fflush(stdout);
+
+                // Loot quest item from REAL corpse
+                player->StoreLootItem(realSlotIndex, &realCorpse->loot);
+            }
+
+            // Mark virtual slot as invalid
+            InvalidateVirtualSlot(lootSlot);
+
+            // Update virtual loot display - mark quest item as looted
+            uint32 questItemIndex = lootSlot - virtualLoot->items.size();
+            if (questItemIndex < virtualLoot->quest_items.size())
+            {
+                virtualLoot->quest_items[questItemIndex].is_looted = true;
                 if (virtualLoot->unlootedCount > 0)
                     virtualLoot->unlootedCount--;
+
+                // Notify client to remove quest item from loot window
+                virtualLoot->NotifyQuestItemRemoved(questItemIndex);
             }
-        }
 
-        // Update visual state of the real corpse if it's now empty
-        if (realCorpse->loot.isLooted())
-        {
-            realCorpse->RemoveDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
-            realCorpse->AllLootRemovedFromCorpse();
-        }
+            // IMPORTANT: After looting a quest item, check ALL involved corpses to see if they
+            // still have lootable items. If a corpse only had quest items and the player no longer
+            // needs them (quest complete), the corpse should no longer be lootable.
+            for (ObjectGuid corpseGuid : *involvedCorpses)
+            {
+                Creature* corpse = player->GetMap()->GetCreature(corpseGuid);
+                if (!corpse)
+                    continue;
 
-        return;
+                // Check if this corpse still has items the player can loot
+                if (corpse->loot.isLooted() || !corpse->loot.hasItemFor(player))
+                {
+                    corpse->RemoveDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
+
+                    // Only call AllLootRemovedFromCorpse if fully looted (for skinning)
+                    if (corpse->loot.isLooted())
+                        corpse->AllLootRemovedFromCorpse();
+                }
+            }
+
+            return;
+        }
     }
 
     // Normal looting (not AOE)
