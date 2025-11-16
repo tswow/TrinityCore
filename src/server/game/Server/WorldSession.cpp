@@ -143,6 +143,7 @@ WorldSession::WorldSession(uint32 id, std::string&& name, std::shared_ptr<WorldS
     expireTime(60000), // 1 min after socket loss, session is deleted
     forceExit(false),
     m_virtualAOELoot(nullptr),
+    m_aoeLastMergeTime(0),
     m_currentBankerGUID(),
     _timeSyncClockDeltaQueue(std::make_unique<boost::circular_buffer<std::pair<int64, uint32>>>(6)),
     _timeSyncClockDelta(0),

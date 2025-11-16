@@ -185,21 +185,22 @@ void WorldSession::HandleAutostoreLootItemOpcode(WorldPacket& recvData)
                     return;
                 }
 
-                printf("[AOE DEBUG] Looting regular item: itemid=%u, realSlot=%u\n",
-                    mapping.itemId, mapping.originalSlot);
-                fflush(stdout);
-
                 // Loot from REAL corpse using REAL slot
                 player->StoreLootItem(mapping.originalSlot, &realCorpse->loot);
+
+                // Check if item was actually looted (StoreLootItem might fail due to bag space, etc.)
+                if (realItem.is_looted)
+                {
+                    // Mark virtual slot as invalid only if successfully looted
+                    InvalidateVirtualSlot(lootSlot);
+
+                    // Update virtual loot display
+                    virtualLoot->items[lootSlot].is_looted = true;
+                    if (virtualLoot->unlootedCount > 0)
+                        virtualLoot->unlootedCount--;
+                }
+                // If not looted (e.g., bag full), leave slot valid so player can try again
             }
-
-            // Mark virtual slot as invalid
-            InvalidateVirtualSlot(lootSlot);
-
-            // Update virtual loot display
-            virtualLoot->items[lootSlot].is_looted = true;
-            if (virtualLoot->unlootedCount > 0)
-                virtualLoot->unlootedCount--;
 
             // Update visual state of the real corpse if it's now empty
             if (realCorpse->loot.isLooted())
@@ -222,10 +223,6 @@ void WorldSession::HandleAutostoreLootItemOpcode(WorldPacket& recvData)
             }
 
             const AOELootSlotMapping& mapping = (*slotMap)[lootSlot];
-
-            printf("[AOE DEBUG] Looting quest item at virtual slot %u: itemid=%u, corpse=%s, realSlot=%u\n",
-                lootSlot, mapping.itemId, mapping.corpseGuid.ToString().c_str(), mapping.originalSlot);
-            fflush(stdout);
 
             // Security: Validate mapping is still valid and is a quest item
             if (!mapping.isValid || !mapping.isQuestItem)
@@ -282,26 +279,28 @@ void WorldSession::HandleAutostoreLootItemOpcode(WorldPacket& recvData)
                 // Calculate real slot index for StoreLootItem (quest items come after regular items)
                 uint8 realSlotIndex = realCorpse->loot.items.size() + mapping.originalSlot;
 
-                printf("[AOE DEBUG]   Looting quest item from real corpse: realSlotIndex=%u\n", realSlotIndex);
-                fflush(stdout);
-
                 // Loot quest item from REAL corpse
                 player->StoreLootItem(realSlotIndex, &realCorpse->loot);
-            }
 
-            // Mark virtual slot as invalid
-            InvalidateVirtualSlot(lootSlot);
+                // Check if item was actually looted (StoreLootItem might fail due to bag space, etc.)
+                if (realQuestItem.is_looted)
+                {
+                    // Mark virtual slot as invalid only if successfully looted
+                    InvalidateVirtualSlot(lootSlot);
 
-            // Update virtual loot display - mark quest item as looted
-            uint32 questItemIndex = lootSlot - virtualLoot->items.size();
-            if (questItemIndex < virtualLoot->quest_items.size())
-            {
-                virtualLoot->quest_items[questItemIndex].is_looted = true;
-                if (virtualLoot->unlootedCount > 0)
-                    virtualLoot->unlootedCount--;
+                    // Update virtual loot display - mark quest item as looted
+                    uint32 questItemIndex = lootSlot - virtualLoot->items.size();
+                    if (questItemIndex < virtualLoot->quest_items.size())
+                    {
+                        virtualLoot->quest_items[questItemIndex].is_looted = true;
+                        if (virtualLoot->unlootedCount > 0)
+                            virtualLoot->unlootedCount--;
 
-                // Notify client to remove quest item from loot window
-                virtualLoot->NotifyQuestItemRemoved(questItemIndex);
+                        // Notify client to remove quest item from loot window
+                        virtualLoot->NotifyQuestItemRemoved(questItemIndex);
+                    }
+                }
+                // If not looted (e.g., bag full), leave slot valid so player can try again
             }
 
             // IMPORTANT: After looting a quest item, check ALL involved corpses to see if they
