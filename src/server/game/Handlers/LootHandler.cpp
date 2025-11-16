@@ -204,7 +204,7 @@ void WorldSession::HandleAutostoreLootItemOpcode(WorldPacket& recvData)
         if (realCorpse->loot.isLooted())
         {
             realCorpse->RemoveDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
-            realCorpse->ForceValuesUpdateAtIndex(UNIT_DYNAMIC_FLAGS);
+            realCorpse->AllLootRemovedFromCorpse();
         }
 
         return;
