@@ -45,15 +45,22 @@ class ChaseMovementGenerator : public MovementGenerator, public AbstractFollower
 
     private:
         static constexpr uint32 RANGE_CHECK_INTERVAL = 100; // time (ms) until we attempt to recalculate
+        static constexpr uint32 RANGE_CHECK_INTERVAL_SMOOTH = 200; // longer interval when movement is smooth
+        static constexpr float PATH_RECALC_DISTANCE_THRESHOLD = 2.0f; // yards - only recalc if predicted position changes significantly
 
         Optional<ChaseRange> const _range;
         Optional<ChaseAngle> const _angle;
 
         std::unique_ptr<PathGenerator> _path;
         Optional<Position> _lastTargetPosition;
+        Optional<Position> _lastPredictedPosition; // track last predicted destination
         TimeTracker _rangeCheckTimer;
         bool _movingTowards = true;
         bool _mutualChase = true;
+        uint32 _smoothMovementCount = 0; // tracks consecutive smooth updates
+
+        // Predictive pursuit
+        Position PredictTargetPosition(Unit* owner, Unit* target, float maxPredictionTime = 2.0f);
 };
 
 #endif

@@ -279,7 +279,7 @@ void WorldSession::HandleAutostoreLootItemOpcode(WorldPacket& recvData)
                 // Calculate real slot index for StoreLootItem (quest items come after regular items)
                 uint8 realSlotIndex = realCorpse->loot.items.size() + mapping.originalSlot;
 
-                // Loot quest item from REAL corpse
+                // Loot the quest item
                 player->StoreLootItem(realSlotIndex, &realCorpse->loot);
 
                 // Check if item was actually looted (StoreLootItem might fail due to bag space, etc.)
@@ -303,7 +303,7 @@ void WorldSession::HandleAutostoreLootItemOpcode(WorldPacket& recvData)
                 // If not looted (e.g., bag full), leave slot valid so player can try again
             }
 
-            // IMPORTANT: After looting a quest item, check ALL involved corpses to see if they
+            // IMPORTANT: After looting quest items, check ALL involved corpses to see if they
             // still have lootable items. If a corpse only had quest items and the player no longer
             // needs them (quest complete), the corpse should no longer be lootable.
             for (ObjectGuid corpseGuid : *involvedCorpses)

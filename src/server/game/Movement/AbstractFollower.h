@@ -18,6 +18,10 @@
 #ifndef TRINITY_ABSTRACTFOLLOWER_H
 #define TRINITY_ABSTRACTFOLLOWER_H
 
+#include "Optional.h"
+#include "Position.h"
+#include <G3D/Vector3.h>
+
 class Unit;
 
 struct AbstractFollower
@@ -29,8 +33,18 @@ struct AbstractFollower
         void SetTarget(Unit* unit);
         Unit* GetTarget() const { return _target; }
 
+        // Velocity tracking for predictive movement
+        void UpdateTargetVelocity(uint32 diff);
+        G3D::Vector3 const& GetTargetVelocity() const { return _targetVelocity; }
+        bool HasVelocityData() const { return _lastTargetPosition.has_value(); }
+
     private:
         Unit* _target = nullptr;
+
+        // Predictive movement data
+        Optional<Position> _lastTargetPosition;
+        Optional<uint32> _lastUpdateTime;
+        G3D::Vector3 _targetVelocity = G3D::Vector3::zero();
 };
 
 #endif

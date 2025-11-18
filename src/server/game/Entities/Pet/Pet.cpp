@@ -2020,6 +2020,19 @@ float Pet::GetNativeObjectScale() const
         else
             scale = creatureFamily->MinScale + float(GetLevel() - creatureFamily->MinScaleLevel) / creatureFamily->MaxScaleLevel * (creatureFamily->MaxScale - creatureFamily->MinScale);
 
+        // Apply Beast Mastery talent bonus
+        if (Player* owner = GetOwner())
+        {
+            // Check for Beast Mastery talent (spell ID 53270)
+            if (owner->HasTalent(53270, owner->GetActiveSpec()))
+                scale += 0.2f;
+
+            // Check for Orc or Dwarf race bonus
+            //uint8 race = owner->GetRace();
+            //if (race == RACE_ORC || race == RACE_DWARF)
+            //    scale += 0.1f;
+        }
+
         return scale;
     }
 

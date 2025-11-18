@@ -82,6 +82,131 @@ ChaseMovementGenerator::ChaseMovementGenerator(Unit *target, Optional<ChaseRange
 }
 ChaseMovementGenerator::~ChaseMovementGenerator() = default;
 
+Position ChaseMovementGenerator::PredictTargetPosition(Unit* owner, Unit* target, float maxPredictionTime)
+{
+    Position current = target->GetPosition();
+
+    // Update velocity tracking
+    UpdateTargetVelocity(RANGE_CHECK_INTERVAL);
+
+    float ourSpeed = owner->GetSpeed(MOVE_RUN);
+    if (ourSpeed < 0.1f)
+        return current;
+
+    // Calculate current distance
+    G3D::Vector3 ownerPos(owner->GetPositionX(), owner->GetPositionY(), owner->GetPositionZ());
+    G3D::Vector3 targetPos(target->GetPositionX(), target->GetPositionY(), target->GetPositionZ());
+    G3D::Vector3 toTarget = targetPos - ownerPos;
+    toTarget.z = 0; // Ignore vertical for interception math
+
+    float distanceXY = std::sqrt(toTarget.x * toTarget.x + toTarget.y * toTarget.y);
+    if (distanceXY < 0.1f)
+        return current;
+
+    // Get target's velocity
+    G3D::Vector3 const& velocity = GetTargetVelocity();
+    float targetSpeed = velocity.length();
+
+    // BEHAVIOR 1: Target is stationary or moving very slowly
+    // In this case, just approach directly - no prediction needed
+    if (!HasVelocityData() || targetSpeed < 0.5f)
+    {
+        // Simply return current position - the pathfinding system will handle approach
+        return current;
+    }
+
+    // BEHAVIOR 2: Target is moving - use predictive interception
+
+    // Normalize direction to target
+    G3D::Vector3 dirToTarget = toTarget / distanceXY;
+
+    // Calculate target's velocity in 2D
+    G3D::Vector3 velocityXY(velocity.x, velocity.y, 0);
+
+    // Calculate how much of target's movement is toward/away from us
+    float approachVelocity = velocityXY.dot(dirToTarget);
+
+    // Calculate closure rate (relative speed at which we're getting closer)
+    float closureRate = ourSpeed - approachVelocity;
+
+    // BEHAVIOR 3: Target is escaping faster than we can chase
+    // Fall back to direct pursuit of current position
+    if (closureRate <= 0.1f)
+        return current;
+
+    // BEHAVIOR 4: Predictive interception for moving targets
+    // Solve for optimal interception point using quadratic equation
+
+    float a = targetSpeed * targetSpeed - ourSpeed * ourSpeed;
+    float b = 2.0f * velocityXY.dot(toTarget);
+    float c = -(distanceXY * distanceXY);
+
+    float timeToIntercept;
+
+    // If speeds are very similar, use simplified calculation
+    if (std::abs(a) < 0.01f)
+    {
+        if (std::abs(b) < 0.01f)
+            timeToIntercept = distanceXY / ourSpeed;
+        else
+            timeToIntercept = -c / b;
+    }
+    else
+    {
+        // Solve quadratic: a*t^2 + b*t + c = 0
+        float discriminant = b * b - 4.0f * a * c;
+
+        if (discriminant < 0)
+        {
+            // No perfect interception - use closure rate
+            timeToIntercept = distanceXY / closureRate;
+        }
+        else
+        {
+            float sqrtDisc = std::sqrt(discriminant);
+            float t1 = (-b + sqrtDisc) / (2.0f * a);
+            float t2 = (-b - sqrtDisc) / (2.0f * a);
+
+            // Choose smallest positive time
+            if (t1 > 0 && t2 > 0)
+                timeToIntercept = std::min(t1, t2);
+            else if (t1 > 0)
+                timeToIntercept = t1;
+            else if (t2 > 0)
+                timeToIntercept = t2;
+            else
+                timeToIntercept = distanceXY / ourSpeed; // Fallback
+        }
+    }
+
+    // Clamp prediction time
+    timeToIntercept = std::max(0.0f, std::min(timeToIntercept, maxPredictionTime));
+
+    // BEHAVIOR 5: Smart prediction scaling based on distance
+    // Close range: less prediction (more reactive)
+    // Long range: more prediction (more interception)
+    float predictionScale = 1.0f;
+    if (distanceXY < 10.0f)
+    {
+        // Within 10 yards, scale down prediction to be more reactive
+        predictionScale = distanceXY / 10.0f;
+    }
+    else if (timeToIntercept * targetSpeed > distanceXY * 1.5f)
+    {
+        // If prediction overshoots too far, reduce it
+        predictionScale = 0.6f;
+    }
+
+    timeToIntercept *= predictionScale;
+
+    // Calculate predicted position
+    Position predicted = current;
+    predicted.m_positionX += velocity.x * timeToIntercept;
+    predicted.m_positionY += velocity.y * timeToIntercept;
+
+    return predicted;
+}
+
 void ChaseMovementGenerator::Initialize(Unit* /*owner*/)
 {
     RemoveFlag(MOVEMENTGENERATOR_FLAG_INITIALIZATION_PENDING | MOVEMENTGENERATOR_FLAG_DEACTIVATED);
@@ -89,6 +214,7 @@ void ChaseMovementGenerator::Initialize(Unit* /*owner*/)
 
     _path = nullptr;
     _lastTargetPosition.reset();
+    _lastPredictedPosition.reset();
 }
 
 void ChaseMovementGenerator::Reset(Unit* owner)
@@ -131,7 +257,20 @@ bool ChaseMovementGenerator::Update(Unit* owner, uint32 diff)
     _rangeCheckTimer.Update(diff);
     if (_rangeCheckTimer.Passed())
     {
-        _rangeCheckTimer.Reset(RANGE_CHECK_INTERVAL);
+        // Adaptive update interval: use longer interval when movement is smooth and predictable
+        G3D::Vector3 const& velocity = GetTargetVelocity();
+        float targetSpeed = velocity.length();
+        bool smoothMovement = HasVelocityData() && targetSpeed > 0.5f && targetSpeed < 10.0f;
+
+        if (smoothMovement && _smoothMovementCount < 5)
+            _smoothMovementCount++;
+        else if (!smoothMovement && _smoothMovementCount > 0)
+            _smoothMovementCount = 0;
+
+        // Use longer interval when we've had several smooth updates
+        uint32 interval = (_smoothMovementCount >= 3) ? RANGE_CHECK_INTERVAL_SMOOTH : RANGE_CHECK_INTERVAL;
+        _rangeCheckTimer.Reset(interval);
+
         if (HasFlag(MOVEMENTGENERATOR_FLAG_INFORM_ENABLED) && PositionOkay(owner, target, _movingTowards ? Optional<float>() : minTarget, _movingTowards ? maxTarget : Optional<float>(), angle))
         {
             RemoveFlag(MOVEMENTGENERATOR_FLAG_INFORM_ENABLED);
@@ -157,12 +296,21 @@ bool ChaseMovementGenerator::Update(Unit* owner, uint32 diff)
         DoMovementInform(owner, target);
     }
 
-    // if the target moved, we have to consider whether to adjust
-    if (!_lastTargetPosition || target->GetPosition() != _lastTargetPosition.value() || mutualChase != _mutualChase)
+    // Check if we need to move or adjust our path
+    // This includes: target moved, state changed, OR we're not in acceptable range
+    bool targetMoved = !_lastTargetPosition || target->GetPosition() != _lastTargetPosition.value();
+    bool stateChanged = mutualChase != _mutualChase;
+    bool needsPositioning = owner->HasUnitState(UNIT_STATE_CHASE_MOVE) || !PositionOkay(owner, target, minRange, maxRange, angle);
+
+    if (targetMoved || stateChanged || needsPositioning)
     {
+        // Update our tracking regardless of whether target moved
+        // This ensures we always have fresh position data for velocity calculation
         _lastTargetPosition = target->GetPosition();
         _mutualChase = mutualChase;
-        if (owner->HasUnitState(UNIT_STATE_CHASE_MOVE) || !PositionOkay(owner, target, minRange, maxRange, angle))
+
+        // Only recalculate path if we need to position ourselves
+        if (needsPositioning)
         {
             Creature* const cOwner = owner->ToCreature();
             // can we get to the target?
@@ -183,11 +331,28 @@ bool ChaseMovementGenerator::Update(Unit* owner, uint32 diff)
 
             float x, y, z;
             bool shortenPath;
+            Position newDestination;
+
             // if we want to move toward the target and there's no fixed angle...
             if (moveToward && !angle)
             {
-                // ...we'll pathfind to the center, then shorten the path
-                target->GetPosition(x, y, z);
+                // Use predictive pursuit to intercept where target will be
+                Position predicted = PredictTargetPosition(owner, target);
+
+                // Path stability check: only recalculate if prediction changed significantly
+                // This prevents jittery path updates from minor target position changes
+                if (_lastPredictedPosition.has_value() && owner->HasUnitState(UNIT_STATE_CHASE_MOVE))
+                {
+                    float distChange = predicted.GetExactDist(_lastPredictedPosition.value());
+                    if (distChange < PATH_RECALC_DISTANCE_THRESHOLD)
+                    {
+                        // Prediction hasn't changed much, keep current path for smooth movement
+                        return true;
+                    }
+                }
+
+                _lastPredictedPosition = predicted;
+                predicted.GetPosition(x, y, z);
                 shortenPath = true;
             }
             else
@@ -237,7 +402,11 @@ bool ChaseMovementGenerator::Update(Unit* owner, uint32 diff)
             Movement::MoveSplineInit init(owner);
             init.MovebyPath(_path->GetPath());
             init.SetWalk(walk);
-            init.SetFacing(target);
+
+            // Let orientation follow the movement path naturally for smooth turning
+            // The spline system will interpolate orientation along linear segments
+            // Path stability (2 yard threshold) prevents frequent recalculations
+
             init.Launch();
         }
     }
