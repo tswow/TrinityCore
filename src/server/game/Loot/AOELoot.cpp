@@ -300,6 +300,53 @@ void CleanupAOELootSession(WorldSession* session)
     if (!session->GetVirtualAOELoot())
         return;
 
+    Player* player = session->GetPlayer();
+    if (player)
+    {
+        // Remove sparkles from corpses that have no lootable items
+        for (ObjectGuid corpseGuid : session->GetInvolvedCorpses())
+        {
+            Creature* corpse = player->GetMap()->GetCreature(corpseGuid);
+            if (!corpse)
+                continue;
+
+            // Check if corpse is fully looted (all items marked as looted, no gold left)
+            bool hasItems = false;
+
+            // Check regular items
+            for (LootItem& item : corpse->loot.items)
+            {
+                if (!item.is_looted)
+                {
+                    hasItems = true;
+                    break;
+                }
+            }
+
+            // Check quest items
+            if (!hasItems)
+            {
+                for (LootItem& questItem : corpse->loot.quest_items)
+                {
+                    if (!questItem.is_looted)
+                    {
+                        hasItems = true;
+                        break;
+                    }
+                }
+            }
+
+            // Check gold
+            if (!hasItems && corpse->loot.gold > 0)
+                hasItems = true;
+
+            if (!hasItems)
+            {
+                corpse->RemoveDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
+            }
+        }
+    }
+
     {
         std::lock_guard<std::mutex> lock(s_corpseViewersMutex);
         for (ObjectGuid guid : session->GetInvolvedCorpses())
