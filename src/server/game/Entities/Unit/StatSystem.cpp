@@ -211,6 +211,11 @@ bool Player::UpdateStats(Stats stat)
     // value = ((base_value * base_pct) + total_value) * total_pct
     float value  = GetTotalStatValue(stat);
 
+    // @tswow-begin: Check for stat override
+    if (HasStatOverride(stat))
+        value = static_cast<float>(GetStatOverride(stat));
+    // @tswow-end
+
     SetStat(stat, int32(value));
 
     if (stat == STAT_STAMINA || stat == STAT_INTELLECT || stat == STAT_STRENGTH)
@@ -297,7 +302,12 @@ void Player::UpdateSpellDamageAndHealingBonus()
     // Magic damage modifiers implemented in Unit::SpellDamageBonusDone
     // This information for client side use only
     // Get healing bonus for all schools
-    SetStatInt32Value(PLAYER_FIELD_MOD_HEALING_DONE_POS, SpellBaseHealingBonusDone(SPELL_SCHOOL_MASK_ALL));
+    // @tswow-begin: Check for healing power override
+    int32 healingBonus = SpellBaseHealingBonusDone(SPELL_SCHOOL_MASK_ALL);
+    if (HasHealingPowerOverride())
+        healingBonus = GetHealingPowerOverride();
+    SetStatInt32Value(PLAYER_FIELD_MOD_HEALING_DONE_POS, healingBonus);
+    // @tswow-end
     // Get damage bonus for all schools
     Unit::AuraEffectList const& modDamageAuras = GetAuraEffectsByType(SPELL_AURA_MOD_DAMAGE_DONE);
     for (uint16 i = SPELL_SCHOOL_HOLY; i < MAX_SPELL_SCHOOL; ++i)
@@ -308,7 +318,12 @@ void Player::UpdateSpellDamageAndHealingBonus()
                 negativeMod += aurEff->GetAmount();
             return negativeMod;
         }));
-        SetStatInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_POS + i, SpellBaseDamageBonusDone(SpellSchoolMask(1 << i)) - GetInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_NEG + i));
+        // @tswow-begin: Check for spell power override
+        int32 spellDamage = SpellBaseDamageBonusDone(SpellSchoolMask(1 << i)) - GetInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_NEG + i);
+        if (HasSpellPowerOverride())
+            spellDamage = GetSpellPowerOverride();
+        SetStatInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_POS + i, spellDamage);
+        // @tswow-end
     }
 }
 
@@ -357,7 +372,6 @@ void Player::UpdateResistances(uint32 school)
     if (school > SPELL_SCHOOL_NORMAL)
     {
         float value  = GetTotalAuraModValue(UnitMods(UNIT_MOD_RESISTANCE_START + school));
-        SetResistance(SpellSchools(school), int32(value));
         // @tswow-begin
         FIRE(
               Player,OnUpdateResistance
@@ -365,7 +379,11 @@ void Player::UpdateResistances(uint32 school)
             , TSMutableNumber<float>(&value)
             , school
         );
+        // Check for resistance override
+        if (HasResistanceOverride(school))
+            value = static_cast<float>(GetResistanceOverride(school));
         // @tswow-end
+        SetResistance(SpellSchools(school), int32(value));
 
         Pet* pet = GetPet();
         if (pet)
@@ -400,6 +418,9 @@ void Player::UpdateArmor()
         , TSPlayer(this)
         , TSMutableNumber<float>(&value)
     );
+    // Check for armor override
+    if (HasArmorOverride())
+        value = static_cast<float>(GetArmorOverride());
     // @tswow-end
     SetArmor(int32(value));
 
@@ -457,6 +478,9 @@ void Player::UpdateMaxHealth()
         ,TSPlayer(this)
         ,TSMutableNumber<float>(&value)
     );
+    // Check for max health override
+    if (HasMaxHealthOverride())
+        value = static_cast<float>(GetMaxHealthOverride());
     // @tswow-end
     SetMaxHealth((uint32)value);
 }
@@ -478,6 +502,9 @@ void Player::UpdateMaxPower(Powers power)
         , static_cast<int8>(power)
         , bonusPower
     );
+    // Check for max mana override
+    if (power == POWER_MANA && HasMaxManaOverride())
+        value = static_cast<float>(GetMaxManaOverride());
     // @tswow-end
     SetMaxPower(power, uint32(std::lroundf(value)));
 }
@@ -732,21 +759,51 @@ void Player::UpdateAttackPowerAndDamage(bool ranged)
 
     if (ranged)
     {
-        SetRangedAttackPower(int32(base_attPower));
-        if (attPowerMod >= 0)
-            SetRangedAttackPowerModPos(int32(attPowerMod));
-        if (attPowerMod <= 0)
-            SetRangedAttackPowerModNeg(int32(attPowerMod));
-        SetRangedAttackPowerMultiplier(attPowerMultiplier);
+        // @tswow-begin: Check for ranged attack power override
+        if (HasRangedAttackPowerOverride())
+        {
+            int32 overrideValue = GetRangedAttackPowerOverride();
+            SetRangedAttackPower(overrideValue);
+            SetRangedAttackPowerModPos(0);
+            SetRangedAttackPowerModNeg(0);
+            SetRangedAttackPowerMultiplier(0);
+        }
+        else
+        {
+        // @tswow-end
+            SetRangedAttackPower(int32(base_attPower));
+            if (attPowerMod >= 0)
+                SetRangedAttackPowerModPos(int32(attPowerMod));
+            if (attPowerMod <= 0)
+                SetRangedAttackPowerModNeg(int32(attPowerMod));
+            SetRangedAttackPowerMultiplier(attPowerMultiplier);
+        // @tswow-begin
+        }
+        // @tswow-end
     }
     else
     {
-        SetAttackPower(int32(base_attPower));
-        if (attPowerMod >= 0)
-            SetAttackPowerModPos(int32(attPowerMod));
-        if (attPowerMod <= 0)
-            SetAttackPowerModNeg(int32(attPowerMod));
-        SetAttackPowerMultiplier(attPowerMultiplier);
+        // @tswow-begin: Check for melee attack power override
+        if (HasAttackPowerOverride())
+        {
+            int32 overrideValue = GetAttackPowerOverride();
+            SetAttackPower(overrideValue);
+            SetAttackPowerModPos(0);
+            SetAttackPowerModNeg(0);
+            SetAttackPowerMultiplier(0);
+        }
+        else
+        {
+        // @tswow-end
+            SetAttackPower(int32(base_attPower));
+            if (attPowerMod >= 0)
+                SetAttackPowerModPos(int32(attPowerMod));
+            if (attPowerMod <= 0)
+                SetAttackPowerModNeg(int32(attPowerMod));
+            SetAttackPowerMultiplier(attPowerMultiplier);
+        // @tswow-begin
+        }
+        // @tswow-end
     }
 
     Pet* pet = GetPet();                                //update pet's AP
@@ -783,6 +840,9 @@ void Player::UpdateShieldBlockValue()
         , TSPlayer(this)
         , TSMutableNumber<uint32>(&block)
     );
+    // Check for shield block value override
+    if (HasShieldBlockValueOverride())
+        block = static_cast<uint32>(GetShieldBlockValueOverride());
     SetUInt32Value(PLAYER_SHIELD_BLOCK, block);
     // @tswow-end
 }
@@ -897,6 +957,9 @@ void Player::UpdateBlockPercentage()
         , TSPlayer(this)
         , TSMutableNumber<float>(&value)
     );
+    // Check for block override
+    if (HasBlockOverride())
+        value = GetBlockOverride();
     // @tswow-end
     SetStatFloatValue(PLAYER_BLOCK_PERCENTAGE, value);
 }
@@ -944,6 +1007,11 @@ void Player::UpdateCritPercentage(WeaponAttackType attType)
         , TSMutableNumber<float>(&value)
         , uint32(attType)
     );
+    // Check for crit override
+    if (attType == RANGED_ATTACK && HasRangedCritOverride())
+        value = GetRangedCritOverride();
+    else if ((attType == BASE_ATTACK || attType == OFF_ATTACK) && HasMeleeCritOverride())
+        value = GetMeleeCritOverride();
     // @tswow-end
     SetStatFloatValue(index, value);
 }
@@ -1034,6 +1102,9 @@ void Player::UpdateParryPercentage()
         , TSPlayer(this)
         , TSMutableNumber<float>(&value)
     );
+    // Check for parry override
+    if (HasParryOverride())
+        value = GetParryOverride();
     // @tswow-end
     SetStatFloatValue(PLAYER_PARRY_PERCENTAGE, value);
 }
@@ -1066,6 +1137,9 @@ void Player::UpdateDodgePercentage()
         , TSPlayer(this)
         , TSMutableNumber<float>(&value)
     );
+    // Check for dodge override
+    if (HasDodgeOverride())
+        value = GetDodgeOverride();
     // @tswow-end
     SetStatFloatValue(PLAYER_DODGE_PERCENTAGE, value);
 }
@@ -1098,6 +1172,9 @@ void Player::UpdateSpellCritChance(uint32 school)
         , TSMutableNumber<float>(&crit)
         , school
     );
+    // Check for spell crit override
+    if (HasSpellCritOverride(school))
+        crit = GetSpellCritOverride(school);
     // @tswow-end
     // Store crit value
     SetFloatValue(PLAYER_SPELL_CRIT_PERCENTAGE1 + school, crit);
@@ -1125,6 +1202,9 @@ void Player::UpdateMeleeHitChances()
         , TSPlayer(this)
         , TSMutableNumber<float>(&m_modMeleeHitChance)
     );
+    // Check for melee hit override
+    if (HasMeleeHitOverride())
+        m_modMeleeHitChance = GetMeleeHitOverride();
     // @tswow-end
 }
 
@@ -1137,6 +1217,9 @@ void Player::UpdateRangedHitChances()
         , TSPlayer(this)
         , TSMutableNumber<float>(&m_modRangedHitChance)
     );
+    // Check for ranged hit override
+    if (HasRangedHitOverride())
+        m_modRangedHitChance = GetRangedHitOverride();
     // @tswow-end
 }
 
@@ -1150,6 +1233,9 @@ void Player::UpdateSpellHitChances()
         , TSPlayer(this)
         , TSMutableNumber<float>(&m_modSpellHitChance)
     );
+    // Check for spell hit override
+    if (HasSpellHitOverride())
+        m_modSpellHitChance = GetSpellHitOverride();
     // @tswow-end
 }
 
@@ -1183,6 +1269,9 @@ void Player::UpdateExpertise(WeaponAttackType attack)
         , uint32(attack)
         , TSItem(const_cast<Item*>(weapon))
     );
+    // Check for expertise override
+    if (HasExpertiseOverride())
+        expertise = GetExpertiseOverride();
     // @tswow-end
 
     switch (attack)
@@ -1312,6 +1401,14 @@ void Player::UpdatePowerRegen(Powers power)
 
     if (power == POWER_ENERGY)
         result_regen_interrupted = result_regen;
+
+    // @tswow-begin: Check for mana regen override
+    if (power == POWER_MANA && HasManaRegenOverride())
+    {
+        result_regen = GetManaRegenOverride();
+        result_regen_interrupted = GetManaRegenOverride();
+    }
+    // @tswow-end
 
     SetFloatValue(UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER + AsUnderlyingType(power), result_regen);
     SetFloatValue(UNIT_FIELD_POWER_REGEN_INTERRUPTED_FLAT_MODIFIER + AsUnderlyingType(power), result_regen_interrupted);

@@ -364,6 +364,35 @@ Player::Player(WorldSession* session): Unit(true)
     m_baseHealthRegen = 0;
     m_spellPenetrationItemMod = 0;
 
+    // @tswow-begin: Initialize stat override system
+    for (uint8 i = 0; i < MAX_STATS; ++i)
+        m_overrideStats[i] = -1;
+    m_overrideMaxHealth = -1;
+    m_overrideMaxMana = -1;
+    m_overrideManaRegen = -1.0f;
+    m_overrideAttackPower = -1;
+    m_overrideRangedAttackPower = -1;
+    m_overrideMeleeCrit = -1;
+    m_overrideRangedCrit = -1;
+    for (uint8 i = 0; i < MAX_SPELL_SCHOOL; ++i)
+        m_overrideSpellCrit[i] = -1;
+    m_overrideMeleeHit = -1;
+    m_overrideRangedHit = -1;
+    m_overrideSpellHit = -1;
+    m_overrideArmor = -1;
+    m_overrideDefense = -1;
+    m_overrideDodge = -1;
+    m_overrideParry = -1;
+    m_overrideBlock = -1;
+    m_overrideShieldBlockValue = -1;
+    m_overrideSpellPower = -1;
+    m_overrideHealingPower = -1;
+    m_overrideExpertise = -1;
+    m_overrideArmorPenetration = -1;
+    for (uint8 i = 0; i < MAX_SPELL_SCHOOL; ++i)
+        m_overrideResistances[i] = -1;
+    // @tswow-end
+
     // Honor System
     m_lastHonorUpdateTime = GameTime::GetGameTime();
 
@@ -27421,5 +27450,249 @@ void Player::SetSelection(ObjectGuid guid) {
     FIRE(Unit,OnSetTarget, TSUnit(this), guid.GetRawValue(), old);
 }
 
+// Stat Override System Implementation
+void Player::SetStatOverride(Stats stat, int32 value)
+{
+    if (stat >= MAX_STATS)
+        return;
+    m_overrideStats[stat] = value;
+    UpdateStats(stat);
+}
+
+int32 Player::GetStatOverride(Stats stat) const
+{
+    if (stat >= MAX_STATS)
+        return -1;
+    return m_overrideStats[stat];
+}
+
+bool Player::HasStatOverride(Stats stat) const
+{
+    if (stat >= MAX_STATS)
+        return false;
+    return m_overrideStats[stat] >= 0;
+}
+
+void Player::ClearStatOverride(Stats stat)
+{
+    if (stat >= MAX_STATS)
+        return;
+    m_overrideStats[stat] = -1;
+    UpdateStats(stat);
+}
+
+void Player::ClearAllStatOverrides()
+{
+    for (uint8 i = 0; i < MAX_STATS; ++i)
+        m_overrideStats[i] = -1;
+    m_overrideMaxHealth = -1;
+    m_overrideMaxMana = -1;
+    m_overrideManaRegen = -1.0f;
+    m_overrideAttackPower = -1;
+    m_overrideRangedAttackPower = -1;
+    m_overrideMeleeCrit = -1;
+    m_overrideRangedCrit = -1;
+    for (uint8 i = 0; i < MAX_SPELL_SCHOOL; ++i)
+        m_overrideSpellCrit[i] = -1;
+    m_overrideMeleeHit = -1;
+    m_overrideRangedHit = -1;
+    m_overrideSpellHit = -1;
+    m_overrideArmor = -1;
+    m_overrideDefense = -1;
+    m_overrideDodge = -1;
+    m_overrideParry = -1;
+    m_overrideBlock = -1;
+    m_overrideShieldBlockValue = -1;
+    m_overrideSpellPower = -1;
+    m_overrideHealingPower = -1;
+    m_overrideExpertise = -1;
+    m_overrideArmorPenetration = -1;
+    for (uint8 i = 0; i < MAX_SPELL_SCHOOL; ++i)
+        m_overrideResistances[i] = -1;
+
+    // Trigger recalculation of all stats
+    UpdateAllStats();
+}
+
+void Player::SetMaxHealthOverride(int32 value)
+{
+    m_overrideMaxHealth = value;
+    UpdateMaxHealth();
+}
+
+void Player::SetMaxManaOverride(int32 value)
+{
+    m_overrideMaxMana = value;
+    UpdateMaxPower(POWER_MANA);
+}
+
+void Player::SetManaRegenOverride(float value)
+{
+    m_overrideManaRegen = value;
+    UpdatePowerRegen(POWER_MANA);
+}
+
+void Player::SetAttackPowerOverride(int32 value)
+{
+    m_overrideAttackPower = value;
+    UpdateAttackPowerAndDamage(false);
+}
+
+void Player::SetRangedAttackPowerOverride(int32 value)
+{
+    m_overrideRangedAttackPower = value;
+    UpdateAttackPowerAndDamage(true);
+}
+
+void Player::SetMeleeCritOverride(float value)
+{
+    m_overrideMeleeCrit = static_cast<int32>(value * 100.0f);
+    UpdateAllCritPercentages();
+}
+
+void Player::SetRangedCritOverride(float value)
+{
+    m_overrideRangedCrit = static_cast<int32>(value * 100.0f);
+    UpdateCritPercentage(RANGED_ATTACK);
+}
+
+void Player::SetSpellCritOverride(uint32 school, float value)
+{
+    if (school >= MAX_SPELL_SCHOOL)
+        return;
+    m_overrideSpellCrit[school] = static_cast<int32>(value * 100.0f);
+    UpdateSpellCritChance(school);
+}
+
+float Player::GetSpellCritOverride(uint32 school) const
+{
+    if (school >= MAX_SPELL_SCHOOL)
+        return -1.0f;
+    return m_overrideSpellCrit[school] >= 0 ? m_overrideSpellCrit[school] / 100.0f : -1.0f;
+}
+
+bool Player::HasSpellCritOverride(uint32 school) const
+{
+    if (school >= MAX_SPELL_SCHOOL)
+        return false;
+    return m_overrideSpellCrit[school] >= 0;
+}
+
+void Player::ClearSpellCritOverride(uint32 school)
+{
+    if (school >= MAX_SPELL_SCHOOL)
+        return;
+    m_overrideSpellCrit[school] = -1;
+    UpdateSpellCritChance(school);
+}
+
+void Player::SetMeleeHitOverride(float value)
+{
+    m_overrideMeleeHit = static_cast<int32>(value * 100.0f);
+    UpdateMeleeHitChances();
+}
+
+void Player::SetRangedHitOverride(float value)
+{
+    m_overrideRangedHit = static_cast<int32>(value * 100.0f);
+    UpdateRangedHitChances();
+}
+
+void Player::SetSpellHitOverride(float value)
+{
+    m_overrideSpellHit = static_cast<int32>(value * 100.0f);
+    UpdateSpellHitChances();
+}
+
+void Player::SetArmorOverride(int32 value)
+{
+    m_overrideArmor = value;
+    UpdateArmor();
+}
+
+void Player::SetDefenseOverride(int32 value)
+{
+    m_overrideDefense = value;
+    UpdateDefenseBonusesMod();
+}
+
+void Player::SetDodgeOverride(float value)
+{
+    m_overrideDodge = static_cast<int32>(value * 100.0f);
+    UpdateDodgePercentage();
+}
+
+void Player::SetParryOverride(float value)
+{
+    m_overrideParry = static_cast<int32>(value * 100.0f);
+    UpdateParryPercentage();
+}
+
+void Player::SetBlockOverride(float value)
+{
+    m_overrideBlock = static_cast<int32>(value * 100.0f);
+    UpdateBlockPercentage();
+}
+
+void Player::SetShieldBlockValueOverride(int32 value)
+{
+    m_overrideShieldBlockValue = value;
+    UpdateShieldBlockValue();
+}
+
+void Player::SetSpellPowerOverride(int32 value)
+{
+    m_overrideSpellPower = value;
+    UpdateSpellDamageAndHealingBonus();
+}
+
+void Player::SetHealingPowerOverride(int32 value)
+{
+    m_overrideHealingPower = value;
+    UpdateSpellDamageAndHealingBonus();
+}
+
+void Player::SetExpertiseOverride(int32 value)
+{
+    m_overrideExpertise = value;
+    UpdateExpertise(BASE_ATTACK);
+    UpdateExpertise(OFF_ATTACK);
+}
+
+void Player::SetArmorPenetrationOverride(int32 value)
+{
+    m_overrideArmorPenetration = value;
+    UpdateArmorPenetration(0);
+}
+
+void Player::SetResistanceOverride(uint32 school, int32 value)
+{
+    if (school >= MAX_SPELL_SCHOOL)
+        return;
+    m_overrideResistances[school] = value;
+    UpdateResistances(school);
+}
+
+int32 Player::GetResistanceOverride(uint32 school) const
+{
+    if (school >= MAX_SPELL_SCHOOL)
+        return -1;
+    return m_overrideResistances[school];
+}
+
+bool Player::HasResistanceOverride(uint32 school) const
+{
+    if (school >= MAX_SPELL_SCHOOL)
+        return false;
+    return m_overrideResistances[school] >= 0;
+}
+
+void Player::ClearResistanceOverride(uint32 school)
+{
+    if (school >= MAX_SPELL_SCHOOL)
+        return;
+    m_overrideResistances[school] = -1;
+    UpdateResistances(school);
+}
 
 // @tswow-end

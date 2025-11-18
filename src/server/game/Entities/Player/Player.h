@@ -1692,6 +1692,133 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         uint32 GetLastRuneGraceTimer(uint8 index) const { return m_lastRuneGraceTimers[index]; }
         void SetLastRuneGraceTimer(uint8 index, uint32 timer) { m_lastRuneGraceTimers[index] = timer; }
 
+        // @tswow-begin: Stat override system for level sync
+        // Set override to -1 to clear override and use calculated value
+        // Base stats
+        void SetStatOverride(Stats stat, int32 value);
+        int32 GetStatOverride(Stats stat) const;
+        bool HasStatOverride(Stats stat) const;
+        void ClearStatOverride(Stats stat);
+        void ClearAllStatOverrides();
+
+        // Health/Power
+        void SetMaxHealthOverride(int32 value);
+        int32 GetMaxHealthOverride() const { return m_overrideMaxHealth; }
+        bool HasMaxHealthOverride() const { return m_overrideMaxHealth >= 0; }
+        void ClearMaxHealthOverride() { m_overrideMaxHealth = -1; UpdateMaxHealth(); }
+
+        void SetMaxManaOverride(int32 value);
+        int32 GetMaxManaOverride() const { return m_overrideMaxMana; }
+        bool HasMaxManaOverride() const { return m_overrideMaxMana >= 0; }
+        void ClearMaxManaOverride() { m_overrideMaxMana = -1; UpdateMaxPower(POWER_MANA); }
+
+        void SetManaRegenOverride(float value);
+        float GetManaRegenOverride() const { return m_overrideManaRegen; }
+        bool HasManaRegenOverride() const { return m_overrideManaRegen >= 0.0f; }
+        void ClearManaRegenOverride() { m_overrideManaRegen = -1.0f; UpdatePowerRegen(POWER_MANA); }
+
+        // Attack Power
+        void SetAttackPowerOverride(int32 value);
+        int32 GetAttackPowerOverride() const { return m_overrideAttackPower; }
+        bool HasAttackPowerOverride() const { return m_overrideAttackPower >= 0; }
+        void ClearAttackPowerOverride() { m_overrideAttackPower = -1; UpdateAttackPowerAndDamage(false); }
+
+        void SetRangedAttackPowerOverride(int32 value);
+        int32 GetRangedAttackPowerOverride() const { return m_overrideRangedAttackPower; }
+        bool HasRangedAttackPowerOverride() const { return m_overrideRangedAttackPower >= 0; }
+        void ClearRangedAttackPowerOverride() { m_overrideRangedAttackPower = -1; UpdateAttackPowerAndDamage(true); }
+
+        // Crit
+        void SetMeleeCritOverride(float value);
+        float GetMeleeCritOverride() const { return m_overrideMeleeCrit >= 0 ? m_overrideMeleeCrit / 100.0f : -1.0f; }
+        bool HasMeleeCritOverride() const { return m_overrideMeleeCrit >= 0; }
+        void ClearMeleeCritOverride() { m_overrideMeleeCrit = -1; UpdateAllCritPercentages(); }
+
+        void SetRangedCritOverride(float value);
+        float GetRangedCritOverride() const { return m_overrideRangedCrit >= 0 ? m_overrideRangedCrit / 100.0f : -1.0f; }
+        bool HasRangedCritOverride() const { return m_overrideRangedCrit >= 0; }
+        void ClearRangedCritOverride() { m_overrideRangedCrit = -1; UpdateCritPercentage(RANGED_ATTACK); }
+
+        void SetSpellCritOverride(uint32 school, float value);
+        float GetSpellCritOverride(uint32 school) const;
+        bool HasSpellCritOverride(uint32 school) const;
+        void ClearSpellCritOverride(uint32 school);
+
+        // Hit
+        void SetMeleeHitOverride(float value);
+        float GetMeleeHitOverride() const { return m_overrideMeleeHit >= 0 ? m_overrideMeleeHit / 100.0f : -1.0f; }
+        bool HasMeleeHitOverride() const { return m_overrideMeleeHit >= 0; }
+        void ClearMeleeHitOverride() { m_overrideMeleeHit = -1; UpdateMeleeHitChances(); }
+
+        void SetRangedHitOverride(float value);
+        float GetRangedHitOverride() const { return m_overrideRangedHit >= 0 ? m_overrideRangedHit / 100.0f : -1.0f; }
+        bool HasRangedHitOverride() const { return m_overrideRangedHit >= 0; }
+        void ClearRangedHitOverride() { m_overrideRangedHit = -1; UpdateRangedHitChances(); }
+
+        void SetSpellHitOverride(float value);
+        float GetSpellHitOverride() const { return m_overrideSpellHit >= 0 ? m_overrideSpellHit / 100.0f : -1.0f; }
+        bool HasSpellHitOverride() const { return m_overrideSpellHit >= 0; }
+        void ClearSpellHitOverride() { m_overrideSpellHit = -1; UpdateSpellHitChances(); }
+
+        // Defense
+        void SetArmorOverride(int32 value);
+        int32 GetArmorOverride() const { return m_overrideArmor; }
+        bool HasArmorOverride() const { return m_overrideArmor >= 0; }
+        void ClearArmorOverride() { m_overrideArmor = -1; UpdateArmor(); }
+
+        void SetDefenseOverride(int32 value);
+        int32 GetDefenseOverride() const { return m_overrideDefense; }
+        bool HasDefenseOverride() const { return m_overrideDefense >= 0; }
+        void ClearDefenseOverride() { m_overrideDefense = -1; UpdateDefenseBonusesMod(); }
+
+        void SetDodgeOverride(float value);
+        float GetDodgeOverride() const { return m_overrideDodge >= 0 ? m_overrideDodge / 100.0f : -1.0f; }
+        bool HasDodgeOverride() const { return m_overrideDodge >= 0; }
+        void ClearDodgeOverride() { m_overrideDodge = -1; UpdateDodgePercentage(); }
+
+        void SetParryOverride(float value);
+        float GetParryOverride() const { return m_overrideParry >= 0 ? m_overrideParry / 100.0f : -1.0f; }
+        bool HasParryOverride() const { return m_overrideParry >= 0; }
+        void ClearParryOverride() { m_overrideParry = -1; UpdateParryPercentage(); }
+
+        void SetBlockOverride(float value);
+        float GetBlockOverride() const { return m_overrideBlock >= 0 ? m_overrideBlock / 100.0f : -1.0f; }
+        bool HasBlockOverride() const { return m_overrideBlock >= 0; }
+        void ClearBlockOverride() { m_overrideBlock = -1; UpdateBlockPercentage(); }
+
+        void SetShieldBlockValueOverride(int32 value);
+        int32 GetShieldBlockValueOverride() const { return m_overrideShieldBlockValue; }
+        bool HasShieldBlockValueOverride() const { return m_overrideShieldBlockValue >= 0; }
+        void ClearShieldBlockValueOverride() { m_overrideShieldBlockValue = -1; UpdateShieldBlockValue(); }
+
+        // Spell
+        void SetSpellPowerOverride(int32 value);
+        int32 GetSpellPowerOverride() const { return m_overrideSpellPower; }
+        bool HasSpellPowerOverride() const { return m_overrideSpellPower >= 0; }
+        void ClearSpellPowerOverride() { m_overrideSpellPower = -1; UpdateSpellDamageAndHealingBonus(); }
+
+        void SetHealingPowerOverride(int32 value);
+        int32 GetHealingPowerOverride() const { return m_overrideHealingPower; }
+        bool HasHealingPowerOverride() const { return m_overrideHealingPower >= 0; }
+        void ClearHealingPowerOverride() { m_overrideHealingPower = -1; UpdateSpellDamageAndHealingBonus(); }
+
+        // Other
+        void SetExpertiseOverride(int32 value);
+        int32 GetExpertiseOverride() const { return m_overrideExpertise; }
+        bool HasExpertiseOverride() const { return m_overrideExpertise >= 0; }
+        void ClearExpertiseOverride() { m_overrideExpertise = -1; UpdateExpertise(BASE_ATTACK); UpdateExpertise(OFF_ATTACK); }
+
+        void SetArmorPenetrationOverride(int32 value);
+        int32 GetArmorPenetrationOverride() const { return m_overrideArmorPenetration; }
+        bool HasArmorPenetrationOverride() const { return m_overrideArmorPenetration >= 0; }
+        void ClearArmorPenetrationOverride() { m_overrideArmorPenetration = -1; UpdateArmorPenetration(0); }
+
+        void SetResistanceOverride(uint32 school, int32 value);
+        int32 GetResistanceOverride(uint32 school) const;
+        bool HasResistanceOverride(uint32 school) const;
+        void ClearResistanceOverride(uint32 school);
+        // @tswow-end
+
         ObjectGuid GetLootGUID() const { return m_lootGuid; }
         void SetLootGUID(ObjectGuid guid) { m_lootGuid = guid; }
 
@@ -2404,6 +2531,41 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         uint32 m_baseManaRegen;
         uint32 m_baseHealthRegen;
         int32 m_spellPenetrationItemMod;
+
+        // @tswow-begin: Stat override system for level sync
+        // -1 means no override (use calculated value)
+        // Base stats
+        int32 m_overrideStats[MAX_STATS];  // STR, AGI, STA, INT, SPI
+        // Health/Power
+        int32 m_overrideMaxHealth;
+        int32 m_overrideMaxMana;
+        float m_overrideManaRegen;
+        // Attack Power
+        int32 m_overrideAttackPower;
+        int32 m_overrideRangedAttackPower;
+        // Crit percentages (stored as fixed point * 100)
+        int32 m_overrideMeleeCrit;
+        int32 m_overrideRangedCrit;
+        int32 m_overrideSpellCrit[MAX_SPELL_SCHOOL];
+        // Hit chances (stored as fixed point * 100)
+        int32 m_overrideMeleeHit;
+        int32 m_overrideRangedHit;
+        int32 m_overrideSpellHit;
+        // Defense stats
+        int32 m_overrideArmor;
+        int32 m_overrideDefense;
+        int32 m_overrideDodge;  // stored as fixed point * 100
+        int32 m_overrideParry;  // stored as fixed point * 100
+        int32 m_overrideBlock;  // stored as fixed point * 100
+        int32 m_overrideShieldBlockValue;
+        // Spell stats
+        int32 m_overrideSpellPower;
+        int32 m_overrideHealingPower;
+        // Other
+        int32 m_overrideExpertise;
+        int32 m_overrideArmorPenetration;
+        int32 m_overrideResistances[MAX_SPELL_SCHOOL];
+        // @tswow-end
 
         SpellModContainer m_spellMods[MAX_SPELLMOD];
 
