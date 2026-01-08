@@ -48,6 +48,9 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable (sol2)
 target_compile_definitions(sol2 INTERFACE SOL_NO_CHECK_NUMBER_PRECISION)
+# Force usage of "nil" in Sol2.
+# This is necessary for Apple platforms (e.g. macOS) where it considers "nil" to be a reserved keyword
+target_compile_definitions(sol2 INTERFACE SOL_NO_NIL=0)
 
 #
 # sourcemap

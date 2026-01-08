@@ -147,9 +147,12 @@ if(BUILD_SHARED_LIBS)
     INTERFACE
       -fvisibility=hidden)
 
-  # --no-undefined to throw errors when there are undefined symbols
-  # (caused through missing TRINITY_*_API macros).
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --no-undefined")
+  # Throw errors when there are undefined symbols (caused through missing TRINITY_*_API macros)
+  # This is the default behavior on macOS since clang 15. Explicitly setting this flag raises a warning
+  # See https://stackoverflow.com/a/77526119/3672398
+  if (NOT CMAKE_CXX_COMPILER_ID MATCHES "AppleClang")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --no-undefined")
+  endif ()
 
   message(STATUS "Clang: Disallow undefined symbols")
 endif()
