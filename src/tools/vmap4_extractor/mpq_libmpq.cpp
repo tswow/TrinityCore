@@ -22,6 +22,76 @@
 #include <cstdio>
 #include <fstream>
 #include <algorithm>
+#include <cctype>
+
+// @tswow-begin: Helper function to normalize MPQ paths for Linux filesystem
+// Converts backslashes to forward slashes and performs case-insensitive path lookup
+static std::string NormalizeMPQPath(std::string path)
+{
+    // Convert backslashes to forward slashes
+    std::replace(path.begin(), path.end(), '\\', '/');
+    return path;
+}
+
+// Case-insensitive directory entry lookup
+static boost::filesystem::path FindCaseInsensitive(boost::filesystem::path const& basePath, std::string const& relativePath)
+{
+    std::string normalized = NormalizeMPQPath(relativePath);
+
+    // Split the path into components
+    std::vector<std::string> components;
+    size_t start = 0;
+    size_t end = 0;
+    while ((end = normalized.find('/', start)) != std::string::npos)
+    {
+        if (end > start)
+            components.push_back(normalized.substr(start, end - start));
+        start = end + 1;
+    }
+    if (start < normalized.size())
+        components.push_back(normalized.substr(start));
+
+    boost::filesystem::path currentPath = basePath;
+
+    for (auto const& component : components)
+    {
+        if (!boost::filesystem::exists(currentPath) || !boost::filesystem::is_directory(currentPath))
+            return boost::filesystem::path(); // Return empty path if not found
+
+        // Try exact match first
+        boost::filesystem::path exactPath = currentPath / component;
+        if (boost::filesystem::exists(exactPath))
+        {
+            currentPath = exactPath;
+            continue;
+        }
+
+        // Case-insensitive search
+        bool found = false;
+        std::string lowerComponent = component;
+        std::transform(lowerComponent.begin(), lowerComponent.end(), lowerComponent.begin(), ::tolower);
+
+        for (boost::filesystem::directory_iterator itr(currentPath); itr != boost::filesystem::directory_iterator(); ++itr)
+        {
+            std::string entryName = itr->path().filename().string();
+            std::string lowerEntry = entryName;
+            std::transform(lowerEntry.begin(), lowerEntry.end(), lowerEntry.begin(), ::tolower);
+
+            if (lowerEntry == lowerComponent)
+            {
+                currentPath = itr->path();
+                found = true;
+                break;
+            }
+        }
+
+        if (!found)
+            return boost::filesystem::path(); // Return empty path if component not found
+    }
+
+    return currentPath;
+}
+// @tswow-end
 
 ArchiveSet gOpenArchives;
 
@@ -83,9 +153,11 @@ MPQFile::MPQFile(char const* filename):
     {
         if((*i)->is_directory)
         {
-            auto fullpath = (*i)->filename / boost::filesystem::path(filename);
-            if(boost::filesystem::exists(fullpath))
+            // @tswow-begin: Use case-insensitive path lookup for Linux compatibility
+            auto fullpath = FindCaseInsensitive((*i)->filename, filename);
+            if(!fullpath.empty() && boost::filesystem::exists(fullpath))
             {
+            // @tswow-end
                 std::ifstream fin;
                 fin.open(fullpath.string(),std::ios::binary);
                 fin.seekg(0, std::ios::end);
