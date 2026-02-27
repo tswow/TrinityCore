@@ -52,6 +52,9 @@
 #include "WorldStatePackets.h"
 #include <cstdarg>
 
+#include "CFBGData.h"
+#include "CharacterCache.h"
+
 void BattlegroundScore::AppendToPacket(WorldPacket& data)
 {
     data << uint64(PlayerGuid);
@@ -2176,6 +2179,7 @@ bool Battleground::HandlePlayerUnderMap(Player* player)
 
 void Battleground::RemovePlayer(Player* player, ObjectGuid guid, uint32 team)
 {
+    player->SetRace(1);
     FIRE_ID(
           m_MapId
         , Battleground,OnRemovePlayer

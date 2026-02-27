@@ -50,6 +50,8 @@
 #include "World.h"
 #include "WorldPacket.h"
 
+#include "CFBGData.h"
+
 // @tswow-begin battleground sets
 struct BattlegroundSetEntry {
     uint32 battleground;

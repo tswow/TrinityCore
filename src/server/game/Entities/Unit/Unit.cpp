@@ -1707,6 +1707,7 @@ void Unit::HandleEmoteCommand(Emote emoteId)
 
 /*static*/ uint32 Unit::CalcSpellResistedDamage(Unit const* attacker, Unit* victim, uint32 damage, SpellSchoolMask schoolMask, SpellInfo const* spellInfo)
 {
+    return uint32(0);
     // Magic damage, check for resists
     if (!(schoolMask & SPELL_SCHOOL_MASK_MAGIC))
         return 0;
@@ -11039,7 +11040,16 @@ bool Unit::InitTamedPet(Pet* pet, uint8 level, uint32 spell_id)
         return false;
 
     pet->SetCreatorGUID(GetGUID());
-    pet->SetFaction(GetFaction());
+    // Claude code: Set pet faction based on owner's maxRage team flag (1=alliance->11, 2=horde->85)
+    {
+        uint32 maxRage = player->GetMaxPower(POWER_RAGE);
+        if (maxRage == 2)
+            pet->SetFaction(85);
+        else if (maxRage == 1)
+            pet->SetFaction(11);
+        else
+            pet->SetFaction(GetFaction());
+    }
     pet->SetCreatedBySpell(spell_id);
 
     if (GetTypeId() == TYPEID_PLAYER)
@@ -11778,7 +11788,16 @@ bool Unit::SetCharmedBy(Unit* charmer, CharmType type, AuraApplication const* au
         return false;
 
     _oldFactionId = GetFaction();
-    SetFaction(charmer->GetFaction());
+    // Claude code: Set faction based on charmer's maxRage team flag (1=alliance->11, 2=horde->85)
+    {
+        uint32 _charmMaxRage = charmer->GetMaxPower(POWER_RAGE);
+        if (_charmMaxRage == 2)
+            SetFaction(85);
+        else if (_charmMaxRage == 1)
+            SetFaction(11);
+        else
+            SetFaction(charmer->GetFaction());
+    }
 
     // Pause any Idle movement
     PauseMovement(0, 0, false);
@@ -12002,14 +12021,31 @@ void Unit::RemoveCharmedBy(Unit* charmer)
 void Unit::RestoreFaction()
 {
     if (GetTypeId() == TYPEID_PLAYER)
-        ToPlayer()->SetFactionForRace(GetRace());
+    {
+        Player* player = ToPlayer();
+        uint32 maxRage = player->GetMaxPower(POWER_RAGE);
+
+        if (maxRage == 2)
+            player->SetFaction(85);
+        else if (maxRage == 1)
+            player->SetFaction(11);
+        else
+            player->SetFactionForRace(GetRace()); // fallback to default
+        }
     else
     {
         if (HasUnitTypeMask(UNIT_MASK_MINION))
         {
             if (Unit* owner = GetOwner())
             {
-                SetFaction(owner->GetFaction());
+                // Claude code: Restore faction based on owner's maxRage team flag (1=alliance->11, 2=horde->85)
+                uint32 _restoreMaxRage = owner->GetMaxPower(POWER_RAGE);
+                if (_restoreMaxRage == 2)
+                    SetFaction(85);
+                else if (_restoreMaxRage == 1)
+                    SetFaction(11);
+                else
+                    SetFaction(owner->GetFaction());
                 return;
             }
         }

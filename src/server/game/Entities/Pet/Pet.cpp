@@ -228,7 +228,14 @@ bool Pet::LoadPetFromDB(Player* owner, uint32 petEntry, uint32 petnumber, bool c
         return false;
 
     setPetType(petInfo->Type);
-    SetFaction(owner->GetFaction());
+    uint32 maxRage = owner->GetMaxPower(POWER_RAGE);
+    if(maxRage == 2){
+        SetFaction(85);
+    }else if(maxRage == 1){
+        SetFaction(11);
+    }else{
+        SetFaction(owner->GetFaction());
+    }
     SetCreatedBySpell(petInfo->CreatedBySpellId);
 
     if (IsCritter())
@@ -374,8 +381,10 @@ bool Pet::LoadPetFromDB(Player* owner, uint32 petEntry, uint32 petnumber, bool c
     map->AddToMap(ToCreature());
 
     //set last used pet number (for use in BG's)
-    if (owner->GetTypeId() == TYPEID_PLAYER && isControlled() && !isTemporarySummoned() && (getPetType() == SUMMON_PET || getPetType() == HUNTER_PET))
+    //TEST - LIQUID REMOVE
+    /*if (owner->GetTypeId() == TYPEID_PLAYER && isControlled() && !isTemporarySummoned() && (getPetType() == SUMMON_PET || getPetType() == HUNTER_PET))
         owner->ToPlayer()->SetLastPetNumber(petInfo->PetNumber);
+        */
 
     owner->GetSession()->AddQueryHolderCallback(CharacterDatabase.DelayQueryHolder(std::make_shared<PetLoadQueryHolder>(ownerid, petInfo->PetNumber)))
         .AfterComplete([this, owner, session = owner->GetSession(), isTemporarySummon, current, lastSaveTime = petInfo->LastSaveTime](SQLQueryHolderBase const& holder)

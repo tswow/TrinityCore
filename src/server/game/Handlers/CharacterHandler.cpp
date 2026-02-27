@@ -62,6 +62,8 @@
 #include "TSEvents.h"
 // @tswow-end
 
+#include "CFBGData.h"
+
 class LoginQueryHolder : public CharacterDatabaseQueryHolder
 {
     private:

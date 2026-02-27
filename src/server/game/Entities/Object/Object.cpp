@@ -2125,7 +2125,14 @@ Creature* WorldObject::SummonTrigger(float x, float y, float z, float ang, Milli
     //summon->SetName(GetName());
     if (GetTypeId() == TYPEID_PLAYER || GetTypeId() == TYPEID_UNIT)
     {
-        summon->SetFaction(((Unit*)this)->GetFaction());
+        // Claude code: Set trigger faction based on owner's maxRage team flag (1=alliance->11, 2=horde->85)
+        uint32 _triggerMaxRage = ((Unit*)this)->GetMaxPower(POWER_RAGE);
+        if (_triggerMaxRage == 2)
+            summon->SetFaction(85);
+        else if (_triggerMaxRage == 1)
+            summon->SetFaction(11);
+        else
+            summon->SetFaction(((Unit*)this)->GetFaction());
         summon->SetLevel(((Unit*)this)->GetLevel());
     }
 
@@ -2740,6 +2747,46 @@ ReputationRank WorldObject::GetReactionTo(WorldObject const* target) const
     if (this == target)
         return REP_FRIENDLY;
 
+    // Claude code: BG faction/team reaction block
+    if(GetMap() && GetMap()->IsBattleground()){
+        // Claude code: Always friendly to charmer/owner in BG (must check before faction-based hostility)
+
+        if(target->GetFaction() == 35 || GetFaction() == 35)return REP_FRIENDLY;
+
+        if((target->GetFaction() == 14 && GetFaction() != 14) || (GetFaction() == 14 && target->GetFaction() != 14)) {
+            return REP_HOSTILE;
+        }
+
+        if (GetCharmerOrOwnerOrSelf() == target->GetCharmerOrOwnerOrSelf())
+            return REP_FRIENDLY;
+    
+        if (GetCharmerOrOwnerOrSelf() == target)
+            return REP_FRIENDLY;
+
+        uint32 selfFaction   = GetFaction();
+        uint32 targetFaction = target->GetFaction();
+
+        // Claude code: Fast path for direct faction 85 vs 11 hostility
+        if ((selfFaction == 85 && targetFaction == 11) ||
+            (selfFaction == 11 && targetFaction == 85))
+        {
+            return REP_HOSTILE;
+        }
+
+        // Claude code: Determine team for self from faction (11=alliance, 85=horde) or owner's maxRage (1=alliance, 2=horde)
+        if (Unit const* selfOwner = GetCharmerOrOwnerOrSelf()) {
+            uint32 maxRage = selfOwner->GetMaxPower(POWER_RAGE);
+            if(maxRage == 2 && targetFaction == 11)return REP_HOSTILE;
+            if(maxRage == 1 && targetFaction == 85)return REP_HOSTILE;
+            if(maxRage == 2 && targetFaction == 85)return REP_FRIENDLY;
+            if(maxRage == 1 && targetFaction == 11)return REP_FRIENDLY;
+        }
+
+        if(selfFaction == targetFaction) {
+            return REP_FRIENDLY;
+        }
+    }
+
     // always friendly to charmer or owner
     if (GetCharmerOrOwnerOrSelf() == target->GetCharmerOrOwnerOrSelf())
         return REP_FRIENDLY;
@@ -2782,6 +2829,17 @@ ReputationRank WorldObject::GetReactionTo(WorldObject const* target) const
                     return REP_FRIENDLY; // return true to allow config option AllowTwoSide.Interaction.Group to work
                                          // however client seems to allow mixed group parties, because in 13850 client it works like:
                                          // return GetFactionReactionTo(GetFactionTemplateEntry(), target);
+
+                // Claude code: MaxRage team-based reaction overrides reputation system
+                // When both player owners have team assignments (maxRage 1=alliance, 2=horde),
+                // determine hostility by team instead of reputation data
+                {
+                    uint32 maxRage = selfPlayerOwner->GetMaxPower(POWER_RAGE);
+                    if(maxRage == 2 && targetUnit->GetFaction() == 11)return REP_HOSTILE;
+                    if(maxRage == 1 && targetUnit->GetFaction() == 85)return REP_HOSTILE;
+                    if(maxRage == 2 && targetUnit->GetFaction() == 85)return REP_FRIENDLY;
+                    if(maxRage == 1 && targetUnit->GetFaction() == 11)return REP_FRIENDLY;
+                }
             }
 
             // check FFA_PVP
@@ -2790,25 +2848,32 @@ ReputationRank WorldObject::GetReactionTo(WorldObject const* target) const
 
             if (selfPlayerOwner)
             {
-                if (FactionTemplateEntry const* targetFactionTemplateEntry = targetUnit->GetFactionTemplateEntry())
+                // Claude code: Skip reputation-based check if self's player owner uses maxRage team system
+                // so that DBC faction template data determines the reaction instead
+                uint32 maxRage = selfPlayerOwner->GetMaxPower(POWER_RAGE);
+                
+                if (true)
                 {
-                    if (ReputationRank const* repRank = selfPlayerOwner->GetReputationMgr().GetForcedRankIfAny(targetFactionTemplateEntry))
-                        return *repRank;
-                    if (!selfPlayerOwner->HasUnitFlag2(UNIT_FLAG2_IGNORE_REPUTATION))
+                    if (FactionTemplateEntry const* targetFactionTemplateEntry = targetUnit->GetFactionTemplateEntry())
                     {
-                        if (FactionEntry const* targetFactionEntry = sFactionStore.LookupEntry(targetFactionTemplateEntry->Faction))
+                        if (ReputationRank const* repRank = selfPlayerOwner->GetReputationMgr().GetForcedRankIfAny(targetFactionTemplateEntry))
+                            return *repRank;
+                        if (!selfPlayerOwner->HasUnitFlag2(UNIT_FLAG2_IGNORE_REPUTATION))
                         {
-                            if (targetFactionEntry->CanHaveReputation())
+                            if (FactionEntry const* targetFactionEntry = sFactionStore.LookupEntry(targetFactionTemplateEntry->Faction))
                             {
-                                // check contested flags
-                                if ((targetFactionTemplateEntry->Flags & FACTION_TEMPLATE_FLAG_CONTESTED_GUARD) &&
-                                    selfPlayerOwner->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_CONTESTED_PVP))
-                                    return REP_HOSTILE;
+                                if (targetFactionEntry->CanHaveReputation())
+                                {
+                                    // check contested flags
+                                    if ((targetFactionTemplateEntry->Flags & FACTION_TEMPLATE_FLAG_CONTESTED_GUARD) &&
+                                        selfPlayerOwner->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_CONTESTED_PVP))
+                                        return REP_HOSTILE;
 
-                                // if faction has reputation, hostile state depends only from AtWar state
-                                if (selfPlayerOwner->GetReputationMgr().IsAtWar(targetFactionEntry))
-                                    return REP_HOSTILE;
-                                return REP_FRIENDLY;
+                                    // if faction has reputation, hostile state depends only from AtWar state
+                                    if (selfPlayerOwner->GetReputationMgr().IsAtWar(targetFactionEntry))
+                                        return REP_HOSTILE;
+                                    return REP_FRIENDLY;
+                                }
                             }
                         }
                     }
@@ -2833,23 +2898,33 @@ ReputationRank WorldObject::GetReactionTo(WorldObject const* target) const
 
     if (Player const* targetPlayerOwner = target->GetAffectingPlayer())
     {
-        // check contested flags
-        if ((factionTemplateEntry->Flags & FACTION_TEMPLATE_FLAG_CONTESTED_GUARD) &&
-            targetPlayerOwner->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_CONTESTED_PVP))
-            return REP_HOSTILE;
-        if (ReputationRank const* repRank = targetPlayerOwner->GetReputationMgr().GetForcedRankIfAny(factionTemplateEntry))
-            return *repRank;
-        if (target->IsUnit() && !target->ToUnit()->HasUnitFlag2(UNIT_FLAG2_IGNORE_REPUTATION))
+        // Claude code: Skip reputation-based override if target's player owner uses maxRage team system
+        // The DBC faction template data correctly handles hostility between factions 85/11 and allied factions
+        uint32 maxRage = targetPlayerOwner->GetMaxPower(POWER_RAGE);
+        if(maxRage == 2 && target->GetFaction() == 11)return REP_HOSTILE;
+        if(maxRage == 1 && target->GetFaction() == 85)return REP_HOSTILE;
+        if(maxRage == 2 && target->GetFaction() == 85)return REP_FRIENDLY;
+        if(maxRage == 1 && target->GetFaction() == 11)return REP_FRIENDLY;
+        if(true)
         {
-            if (FactionEntry const* factionEntry = sFactionStore.LookupEntry(factionTemplateEntry->Faction))
+            // check contested flags
+            if ((factionTemplateEntry->Flags & FACTION_TEMPLATE_FLAG_CONTESTED_GUARD) &&
+                targetPlayerOwner->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_CONTESTED_PVP))
+                return REP_HOSTILE;
+            if (ReputationRank const* repRank = targetPlayerOwner->GetReputationMgr().GetForcedRankIfAny(factionTemplateEntry))
+                return *repRank;
+            if (target->IsUnit() && !target->ToUnit()->HasUnitFlag2(UNIT_FLAG2_IGNORE_REPUTATION))
             {
-                if (factionEntry->CanHaveReputation())
+                if (FactionEntry const* factionEntry = sFactionStore.LookupEntry(factionTemplateEntry->Faction))
                 {
-                    // CvP case - check reputation, don't allow state higher than neutral when at war
-                    ReputationRank repRank = targetPlayerOwner->GetReputationMgr().GetRank(factionEntry);
-                    if (targetPlayerOwner->GetReputationMgr().IsAtWar(factionEntry))
-                        repRank = std::min(REP_NEUTRAL, repRank);
-                    return repRank;
+                    if (factionEntry->CanHaveReputation())
+                    {
+                        // CvP case - check reputation, don't allow state higher than neutral when at war
+                        ReputationRank repRank = targetPlayerOwner->GetReputationMgr().GetRank(factionEntry);
+                        if (targetPlayerOwner->GetReputationMgr().IsAtWar(factionEntry))
+                            repRank = std::min(REP_NEUTRAL, repRank);
+                        return repRank;
+                    }
                 }
             }
         }
@@ -2870,16 +2945,32 @@ ReputationRank WorldObject::GetReactionTo(WorldObject const* target) const
 
 bool WorldObject::IsHostileTo(WorldObject const* target) const
 {
+            if(target->GetFaction() == 35 || GetFaction() == 35)return REP_FRIENDLY;
+
+    if((GetFaction() == 14 && target->GetFaction() != 14) || (target->GetFaction() == 14 && GetFaction() != 14))return true;
+    uint32 maxRage = GetCharmerOrOwnerOrSelf()->GetMaxPower(POWER_RAGE);
+    if(maxRage == 2 && target->GetFaction() == 11)return true;
+    if(maxRage == 1 && target->GetFaction() == 85)return true;
+    if(maxRage == 2 && target->GetFaction() == 85)return false;
+    if(maxRage == 1 && target->GetFaction() == 11)return false;
     return GetReactionTo(target) <= REP_HOSTILE;
 }
 
 bool WorldObject::IsFriendlyTo(WorldObject const* target) const
-{
+{        if(target->GetFaction() == 35 || GetFaction() == 35)return REP_FRIENDLY;
+
+    if((GetFaction() == 14 && target->GetFaction() == 14))return true;
+    uint32 maxRage = GetCharmerOrOwnerOrSelf()->GetMaxPower(POWER_RAGE);
+    if(maxRage == 2 && target->GetFaction() == 11)return false;
+    if(maxRage == 1 && target->GetFaction() == 85)return false;
+    if(maxRage == 2 && target->GetFaction() == 85)return true;
+    if(maxRage == 1 && target->GetFaction() == 11)return true;
     return GetReactionTo(target) >= REP_FRIENDLY;
 }
 
 bool WorldObject::IsHostileToPlayers() const
 {
+    if(GetFaction() == 14)return true;
     FactionTemplateEntry const* my_faction = GetFactionTemplateEntry();
     if (!my_faction->Faction)
         return false;
@@ -2998,6 +3089,13 @@ bool WorldObject::IsValidAttackTarget(WorldObject const* target, SpellInfo const
         if (unitTarget->HasUnitFlag(UNIT_FLAG_PLAYER_CONTROLLED) && unitOrOwner->IsImmuneToPC())
             return false;
     }
+
+    //LIQUID
+    if(unit && unit->GetMaxPower(POWER_RAGE) == 1 && target->GetFaction() == 85)return true;
+    if(unit && unit->GetMaxPower(POWER_RAGE) == 2 && target->GetFaction() == 11)return true;
+    if(unit && target->GetFaction() == 85 && GetFaction() == 11)return true;
+    if(unit && target->GetFaction() == 11 && GetFaction() == 85)return true;
+    //
 
     // CvC case - can attack each other only when one of them is hostile
     if (unit && !unit->HasUnitFlag(UNIT_FLAG_PLAYER_CONTROLLED) && unitTarget && !unitTarget->HasUnitFlag(UNIT_FLAG_PLAYER_CONTROLLED))
@@ -3133,6 +3231,10 @@ bool WorldObject::IsValidAssistTarget(WorldObject const* target, SpellInfo const
         }
     }
 
+    //LIQUID
+    if(unit && unitTarget && unit->GetFaction() == 11 && (unitTarget->GetFaction() == 11 || GetCharmerOrOwnerOrSelf() == unitTarget))return true;
+    if(unit && unitTarget && unit->GetFaction() == 85 && (unitTarget->GetFaction() == 85 || GetCharmerOrOwnerOrSelf() == unitTarget))return true;
+
     // can't assist non-friendly targets
     if (GetReactionTo(target) < REP_NEUTRAL && target->GetReactionTo(this) < REP_NEUTRAL && (!ToCreature() || !(ToCreature()->GetCreatureTemplate()->type_flags & CREATURE_TYPE_FLAG_TREAT_AS_RAID_UNIT)))
         return false;
@@ -3142,6 +3244,7 @@ bool WorldObject::IsValidAssistTarget(WorldObject const* target, SpellInfo const
     {
         if (unit && unit->HasUnitFlag(UNIT_FLAG_PLAYER_CONTROLLED))
         {
+
             Player const* selfPlayerOwner = GetAffectingPlayer();
             Player const* targetPlayerOwner = unitTarget->GetAffectingPlayer();
             if (selfPlayerOwner && targetPlayerOwner)

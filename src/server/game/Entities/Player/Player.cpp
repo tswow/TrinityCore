@@ -108,6 +108,9 @@
 #include "WorldPacket.h"
 #include "WorldSession.h"
 #include "WorldStatePackets.h"
+
+#include "CFBGData.h"
+
 // @tswow-begin
 #include "TSProfile.h"
 #include "TSEvents.h"
@@ -193,6 +196,8 @@ Player::Player(WorldSession* session): Unit(true)
 , m_db_json(DBJsonEntityType::PLAYER,0)
 // @tswow-end
 {
+    cfbgdata = std::make_unique<CFBGData>(this);
+
     m_objectType |= TYPEMASK_PLAYER;
     m_objectTypeId = TYPEID_PLAYER;
 
@@ -529,8 +534,9 @@ bool Player::Create(ObjectGuid::LowType guidlow, CharacterCreateInfo* createInfo
         return false;
     }
 
-    SetRace(createInfo->Race);
+    SetRace(1);
     SetClass(createInfo->Class);
+    cfbgdata->InitializeCFData();
     SetGender(Gender(createInfo->Gender));
     SetPowerType(Powers(powertype), false);
     InitDisplayIds();
@@ -1683,6 +1689,11 @@ bool Player::TeleportTo(uint32 mapid, float x, float y, float z, float orientati
 
     // don't let enter battlegrounds without assigned battleground id (for example through areatrigger)...
     // don't let gm level > 1 either
+
+    if(!mEntry->IsBattlegroundOrArena()) {
+        SetRace(1);
+    }
+
     if (!InBattleground() && mEntry->IsBattlegroundOrArena())
         return false;
 
@@ -5029,16 +5040,16 @@ void Player::RepopAtGraveyard()
 
     bool shouldResurrect = false;
     // Such zones are considered unreachable as a ghost and the player must be automatically revived
-    if ((!IsAlive() && zone && zone->Flags & AREA_FLAG_NEED_FLY) || GetTransport() || GetPositionZ() < GetMap()->GetMinHeight(GetPositionX(), GetPositionY()))
+    /*if ((!IsAlive() && zone && zone->Flags & AREA_FLAG_NEED_FLY) || GetTransport() || GetPositionZ() < GetMap()->GetMinHeight(GetPositionX(), GetPositionY()))
     {
         shouldResurrect = true;
         SpawnCorpseBones();
-    }
+    }*/
 
-    WorldSafeLocsEntry const* ClosestGrave;
+   // WorldSafeLocsEntry const* ClosestGrave;
 
     // Special handle for battleground maps
-    if (Battleground* bg = GetBattleground())
+    /*if (Battleground* bg = GetBattleground())
         ClosestGrave = bg->GetClosestGraveyard(this);
     else
     {
@@ -5046,14 +5057,14 @@ void Player::RepopAtGraveyard()
             ClosestGrave = bf->GetClosestGraveyard(this);
         else
             ClosestGrave = sObjectMgr->GetClosestGraveyard(GetPositionX(), GetPositionY(), GetPositionZ(), GetMapId(), GetTeam());
-    }
+    }*/
 
     // stop countdown until repop
     m_deathTimer = 0;
 
     // if no grave found, stay at the current location
     // and don't show spirit healer location
-    if (ClosestGrave)
+    /*if (ClosestGrave)
     {
         TeleportTo(ClosestGrave->Continent, ClosestGrave->Loc.X, ClosestGrave->Loc.Y, ClosestGrave->Loc.Z, GetOrientation(), shouldResurrect ? TELE_REVIVE_AT_TELEPORT : 0);
         if (isDead())                                        // not send if alive, because it used in TeleportTo()
@@ -5065,7 +5076,7 @@ void Player::RepopAtGraveyard()
         }
     }
     else if (GetPositionZ() < GetMap()->GetMinHeight(GetPositionX(), GetPositionY()))
-        TeleportTo(m_homebindMapId, m_homebindX, m_homebindY, m_homebindZ, GetOrientation());
+        TeleportTo(m_homebindMapId, m_homebindX, m_homebindY, m_homebindZ, GetOrientation());*/
 
     RemoveFlag(PLAYER_FLAGS, PLAYER_FLAGS_IS_OUT_OF_BOUNDS);
 }
@@ -5427,6 +5438,8 @@ void Player::GetDodgeFromAgility(float &diminishing, float &nondiminishing) cons
 
 float Player::GetSpellCritFromIntellect() const
 {
+    //LIQUID - Remove spell crit from int
+    return 0;
     uint8 level = GetLevel();
     uint32 pclass = GetClass();
 
@@ -6579,11 +6592,29 @@ uint32 Player::TeamForRace(uint8 race)
 
 void Player::SetFactionForRace(uint8 race)
 {
+    // --- Custom Rage-based faction logic ---
+    uint32 maxRage = GetMaxPower(POWER_RAGE);
+
+    if (maxRage == 2)
+    {
+        m_team = TEAM_HORDE;     // or set to whichever team makes sense
+        SetFaction(85);
+        return; // skip normal handling
+    }
+    else if (maxRage == 1)
+    {
+        m_team = TEAM_ALLIANCE;        // or whichever team fits
+        SetFaction(11);
+        return; // skip normal handling
+    }
+
+    // --- Default logic (if not matched above) ---
     m_team = TeamForRace(race);
 
     ChrRacesEntry const* rEntry = sChrRacesStore.LookupEntry(race);
     SetFaction(rEntry ? rEntry->FactionID : 0);
 }
+
 
 ReputationRank Player::GetReputationRank(uint32 faction) const
 {
@@ -7114,6 +7145,10 @@ void Player::UpdateZone(uint32 newZone, uint32 newArea)
     if (!IsInWorld())
         return;
 
+    if(!GetMap()->IsBattlegroundOrArena()){
+        SetRace(1);
+    }
+
     uint32 const oldZone = m_zoneUpdateId;
     m_zoneUpdateId = newZone;
     m_zoneUpdateTimer = ZONE_UPDATE_INTERVAL;
@@ -7200,6 +7235,8 @@ void Player::UpdateZone(uint32 newZone, uint32 newArea)
         if (Guild* guild = GetGuild())
             guild->UpdateMemberData(this, GUILD_MEMBER_DATA_ZONEID, newZone);
     }
+
+
 }
 
 //If players are too far away from the duel flag... they lose the duel
@@ -11911,7 +11948,7 @@ InventoryResult Player::CanUseItem(ItemTemplate const* proto) const
     if (!proto)
         return EQUIP_ERR_ITEM_NOT_FOUND;
 
-    if (((proto->Flags2 & ITEM_FLAG2_FACTION_HORDE) && GetTeam() != HORDE) ||
+    /*if (((proto->Flags2 & ITEM_FLAG2_FACTION_HORDE) && GetTeam() != HORDE) ||
         (((proto->Flags2 & ITEM_FLAG2_FACTION_ALLIANCE) && GetTeam() != ALLIANCE)))
         return EQUIP_ERR_YOU_CAN_NEVER_USE_THAT_ITEM;
 
@@ -11924,7 +11961,7 @@ InventoryResult Player::CanUseItem(ItemTemplate const* proto) const
             return EQUIP_ERR_NO_REQUIRED_PROFICIENCY;
         else if (GetSkillValue(proto->RequiredSkill) < proto->RequiredSkillRank)
             return EQUIP_ERR_CANT_EQUIP_SKILL;
-    }
+    }*/
 
     if (proto->RequiredSpell != 0 && !HasSpell(proto->RequiredSpell))
         return EQUIP_ERR_NO_REQUIRED_PROFICIENCY;
@@ -17453,6 +17490,35 @@ bool Player::IsLoading() const
     return GetSession()->PlayerLoading();
 }
 
+TeamId Player::GetTeamId() const
+{
+    uint32 maxRage = GetMaxPower(POWER_RAGE);
+
+    if (maxRage == 2)
+        return TEAM_HORDE;
+
+    if (maxRage == 1)
+        return TEAM_ALLIANCE;
+
+    // fallback to default
+    return m_team == ALLIANCE ? TEAM_ALLIANCE : TEAM_HORDE;
+}
+
+uint32 Player::GetTeam() const
+{
+    uint32 maxRage = GetMaxPower(POWER_RAGE);
+
+    if (maxRage == 2)
+        return HORDE;    // 1
+
+    if (maxRage == 1)
+        return ALLIANCE; // 0
+
+    // fallback to whatever was set by race
+    return m_team;
+}
+
+
 bool Player::LoadFromDB(ObjectGuid guid, CharacterDatabaseQueryHolder const& holder)
 {
     //                                                       0     1        2     3     4      5       6      7   8      9     10    11         12         13           14         15         16
@@ -17514,9 +17580,23 @@ bool Player::LoadFromDB(ObjectGuid guid, CharacterDatabaseQueryHolder const& hol
         return false;
     }
 
+    //SetRace(1);
     SetRace(fields[3].GetUInt8());
     SetClass(fields[4].GetUInt8());
+    cfbgdata->InitializeCFData();
     SetGender(gender);
+
+    if (m_bgData.bgTeam &&
+        sBattlegroundMgr->GetBattleground(m_bgData.bgInstanceID, m_bgData.bgTypeID) &&
+        !cfbgdata->NativeTeam())
+    {
+        SetRace(1);
+        SetMaxPower(POWER_RAGE, 2);
+        //SetRace(cfbgdata->GetFRace());
+    }else{
+        SetRace(1);
+        SetMaxPower(POWER_RAGE, 1);
+    }
 
     // check if race/class combination is valid
     PlayerInfo const* info = sObjectMgr->GetPlayerInfo(GetRace(), GetClass());
@@ -18059,6 +18139,8 @@ bool Player::LoadFromDB(ObjectGuid guid, CharacterDatabaseQueryHolder const& hol
     InitTalentForLevel();
     LearnDefaultSkills();
     LearnCustomSpells();
+
+    cfbgdata->ReplaceRacials();
 
     // must be before inventory (some items required reputation check)
     m_reputationMgr->LoadFromDB(holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_REPUTATION));
@@ -19620,7 +19702,7 @@ void Player::SaveToDB(CharacterDatabaseTransaction trans, bool create /* = false
         stmt->setUInt32(index++, GetGUID().GetCounter());
         stmt->setUInt32(index++, GetSession()->GetAccountId());
         stmt->setString(index++, GetName());
-        stmt->setUInt8(index++, GetRace());
+        stmt->setUInt8(index++, cfbgdata->GetORace());
         stmt->setUInt8(index++, GetClass());
         stmt->setUInt8(index++, GetNativeGender());   // save gender from PLAYER_BYTES_3, UNIT_BYTES_0 changes with every transform effect
         stmt->setUInt8(index++, GetLevel());
@@ -19730,7 +19812,7 @@ void Player::SaveToDB(CharacterDatabaseTransaction trans, bool create /* = false
         // Update query
         stmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_CHARACTER);
         stmt->setString(index++, GetName());
-        stmt->setUInt8(index++, GetRace());
+        stmt->setUInt8(index++, cfbgdata->GetORace());
         stmt->setUInt8(index++, GetClass());
         stmt->setUInt8(index++, GetNativeGender());   // save gender from PLAYER_BYTES_3, UNIT_BYTES_0 changes with every transform effect
         stmt->setUInt8(index++, GetLevel());
@@ -22571,6 +22653,7 @@ void Player::SetBGTeam(uint32 team)
 {
     m_bgData.bgTeam = team;
     SetArenaFaction(uint8(team == ALLIANCE ? 1 : 0));
+    cfbgdata->SetCFBGData();
 }
 
 uint32 Player::GetBGTeam() const
@@ -27187,7 +27270,13 @@ Pet* Player::SummonPet(uint32 entry, float x, float y, float z, float ang, PetTy
         RemovePet(nullptr, PET_SAVE_NOT_IN_SLOT);
 
     pet->SetCreatorGUID(GetGUID());
-    pet->SetFaction(GetFaction());
+    uint32 maxRage = GetMaxPower(POWER_RAGE);
+    if(maxRage == 1){
+        pet->SetFaction(11);
+    }else if(maxRage == 2){
+        pet->SetFaction(85);
+    }else
+        pet->SetFaction(GetFaction());
 
     pet->ReplaceAllNpcFlags(UNIT_NPC_FLAG_NONE);
     pet->InitStatsForLevel(GetLevel());

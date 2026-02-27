@@ -903,13 +903,17 @@ struct ResurrectionData
 
 #define SPELL_DK_RAISE_ALLY 46619
 
+class CFBGData;
+
 class TC_GAME_API Player : public Unit, public GridObject<Player>
 {
     friend class WorldSession;
     friend class CinematicMgr;
+    friend class CFBGData;
     friend void AddItemToUpdateQueueOf(Item* item, Player* player);
     friend void RemoveItemFromUpdateQueueOf(Item* item, Player* player);
     public:
+        std::unique_ptr<CFBGData> cfbgdata;
         // @tswow-begin
         TSServerBuffer m_msg_buffer;
         TSDBJson m_db_json;
@@ -1800,8 +1804,8 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         void CheckAreaExploreAndOutdoor(void);
 
         static uint32 TeamForRace(uint8 race);
-        uint32 GetTeam() const { return m_team; }
-        TeamId GetTeamId() const { return m_team == ALLIANCE ? TEAM_ALLIANCE : TEAM_HORDE; }
+        uint32 GetTeam() const;
+        TeamId GetTeamId() const;
         void SetFactionForRace(uint8 race);
 
         void InitDisplayIds();

@@ -191,7 +191,14 @@ void TempSummon::InitStats(uint32 duration)
 
     if (owner && IsTrigger() && m_spells[0])
     {
-        SetFaction(owner->GetFaction());
+        uint32 maxRage = owner->GetMaxPower(POWER_RAGE);
+        if(maxRage == 2){
+            SetFaction(85);
+        }else if(maxRage == 1){
+            SetFaction(11);
+        }else{
+            SetFaction(owner->GetFaction());
+        }
         SetLevel(owner->GetLevel());
         if (owner->GetTypeId() == TYPEID_PLAYER)
             m_ControlledByPlayer = true;
@@ -214,7 +221,7 @@ void TempSummon::InitStats(uint32 duration)
         }
     }
 
-    if (m_Properties->Faction)
+    if (m_Properties->Faction && m_ControlledByPlayer == false)
         SetFaction(m_Properties->Faction);
     else if (IsVehicle() && owner) // properties should be vehicle
         SetFaction(owner->GetFaction());
@@ -238,6 +245,8 @@ void TempSummon::InitSummon()
         {
             if (owner->ToGameObject()->AI())
                 owner->ToGameObject()->AI()->JustSummoned(this);
+        }
+        else if (owner->GetTypeId() == TYPEID_PLAYER) {
         }
         // @tswow-begin
         FIRE_ID(this->GetCreatureTemplate()->events.id,Creature,OnIsSummoned,TSCreature(this),TSWorldObject(owner));
@@ -344,7 +353,14 @@ void Minion::InitStats(uint32 duration)
     SetReactState(REACT_PASSIVE);
 
     SetCreatorGUID(GetOwner()->GetGUID());
-    SetFaction(GetOwner()->GetFaction());
+    uint32 maxRage = GetOwner()->GetMaxPower(POWER_RAGE);
+    if(maxRage == 2){
+        SetFaction(85);
+    }else if(maxRage == 1){
+        SetFaction(11);
+    }else{
+        SetFaction(GetOwner()->GetFaction());
+    }
 
     GetOwner()->SetMinion(this, true);
 }

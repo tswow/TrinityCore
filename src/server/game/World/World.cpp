@@ -502,6 +502,8 @@ void World::LoadConfigSettings(bool reload)
     m_bool_configs[CONFIG_TSWOW_LUA_ENABLED] = sConfigMgr->GetBoolDefault("TSWoW.EnableLua", true);
     // @tswow-en
 
+    m_bool_configs[CONFIG_CFBG_ENABLED] = sConfigMgr->GetBoolDefault("Warsworn.EnableCFBG", true);
+
     ///- Read the player limit and the Message of the day from the config file
     SetPlayerAmountLimit(sConfigMgr->GetIntDefault("PlayerLimit", 100));
     Motd::SetMotd(sConfigMgr->GetStringDefault("Motd", "Welcome to a Trinity Core Server."));

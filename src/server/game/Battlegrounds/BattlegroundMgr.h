@@ -28,6 +28,8 @@
 #include "UniqueTrackablePtr.h"
 #include <unordered_map>
 
+#include "CFBGQueue.h"
+
 struct BattlemasterListEntry;
 
 typedef std::map<uint32, Trinity::unique_trackable_ptr<Battleground>> BattlegroundContainer;
