@@ -34,6 +34,12 @@ SET(LUA_ROOT ${lua_SOURCE_DIR})
 file(GLOB SRC_LUA ${LUA_ROOT}/*.h ${LUA_ROOT}/*.c)
 LIST(REMOVE_ITEM SRC_LUA ${CMAKE_SOURCE_DIR}/../../misc/client-extensions/lua-5.1/src/lua.c)
 add_library ( liblua STATIC ${SRC_LUA} )
+# Expose the fetched Lua sources as a public include directory so downstream
+# consumers (notably sol2, which is consumed via a precompiled header) pull
+# the matching lua.h from this build rather than whatever <lua.h> the system
+# happens to provide. Several modern Linux distros ship Lua 5.5 in
+# /usr/include and quietly break sol2's expectations otherwise.
+target_include_directories(liblua PUBLIC ${LUA_ROOT})
 if(NOT WIN32)
     target_compile_options(liblua PUBLIC -fPIC)
 endif()
