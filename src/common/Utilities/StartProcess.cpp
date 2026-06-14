@@ -22,15 +22,32 @@
 
 #include <boost/algorithm/string/join.hpp>
 #include <boost/iostreams/copy.hpp>
-#include <boost/process/args.hpp>
-#include <boost/process/child.hpp>
-#include <boost/process/env.hpp>
-#include <boost/process/exe.hpp>
-#include <boost/process/io.hpp>
-#include <boost/process/pipe.hpp>
-#include <boost/process/search_path.hpp>
+// Boost 1.86 split boost::process into v1 (the old API) and v2 (the new one)
+// and exposed the v1 headers under boost/process/v1/. Boost 1.91 then removed
+// the unversioned forwarder headers, so on those versions only the v1/ path
+// resolves. Detect both layouts so older Boost (TC's minimum is 1.74) still
+// works.
+#if __has_include(<boost/process/v1/args.hpp>)
+#  include <boost/process/v1/args.hpp>
+#  include <boost/process/v1/child.hpp>
+#  include <boost/process/v1/env.hpp>
+#  include <boost/process/v1/exe.hpp>
+#  include <boost/process/v1/io.hpp>
+#  include <boost/process/v1/pipe.hpp>
+#  include <boost/process/v1/search_path.hpp>
+namespace tc_bp = boost::process::v1;
+#else
+#  include <boost/process/args.hpp>
+#  include <boost/process/child.hpp>
+#  include <boost/process/env.hpp>
+#  include <boost/process/exe.hpp>
+#  include <boost/process/io.hpp>
+#  include <boost/process/pipe.hpp>
+#  include <boost/process/search_path.hpp>
+namespace tc_bp = boost::process;
+#endif
 
-using namespace boost::process;
+using namespace tc_bp;
 using namespace boost::iostreams;
 
 namespace Trinity
@@ -133,7 +150,7 @@ static int CreateChildProcess(T waiter, std::string const& executable,
                 exe = boost::filesystem::absolute(executable).string(),
                 args = argsVector,
                 env = environment(boost::this_process::environment()),
-                std_in = boost::process::close,
+                std_in = tc_bp::close,
                 std_out = outStream,
                 std_err = errStream
             };
