@@ -31,9 +31,27 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(lua)
 SET(LUA_ROOT ${lua_SOURCE_DIR})
+# The Lua git repository, unlike the release tarball, has no lua.hpp. sol2
+# includes <lua.hpp> whenever one is visible, so a system copy (Arch ships
+# Lua 5.5 in /usr/include) would win, and its "lua.h" would then resolve next
+# to it instead of to the Lua built here. Provide the stock lua.hpp.
+if(NOT EXISTS ${LUA_ROOT}/lua.hpp)
+  file(WRITE ${LUA_ROOT}/lua.hpp
+    "// lua.hpp\n"
+    "// Lua header files for C++\n"
+    "// <<extern \"C\">> not supplied automatically because Lua also compiles as C++\n"
+    "\n"
+    "extern \"C\" {\n"
+    "#include \"lua.h\"\n"
+    "#include \"lualib.h\"\n"
+    "#include \"lauxlib.h\"\n"
+    "}\n")
+endif()
 file(GLOB SRC_LUA ${LUA_ROOT}/*.h ${LUA_ROOT}/*.c)
 LIST(REMOVE_ITEM SRC_LUA ${CMAKE_SOURCE_DIR}/../../misc/client-extensions/lua-5.1/src/lua.c)
 add_library ( liblua STATIC ${SRC_LUA} )
+# Consumers must see the Lua headers built here, never the system ones.
+target_include_directories(liblua PUBLIC ${LUA_ROOT})
 if(NOT WIN32)
     target_compile_options(liblua PUBLIC -fPIC)
 endif()
@@ -48,6 +66,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable (sol2)
 target_compile_definitions(sol2 INTERFACE SOL_NO_CHECK_NUMBER_PRECISION)
+target_include_directories(sol2 INTERFACE $<BUILD_INTERFACE:${LUA_ROOT}>)
 
 #
 # sourcemap
